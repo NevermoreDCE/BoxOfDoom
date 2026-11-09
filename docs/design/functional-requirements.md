@@ -1,6 +1,15 @@
 
 
-# Overview
+# purpose
+this is an assistant app to help with running large numbers of mechs for a GM'd campaign game or to help run mechs that have a lot of weapon systems and can be arduous to roll individually.
+it is not designed to completely replace pencil-and-paper-plus-dice recordkeeping or gameplay, but simply to speed up the "enemy" turns and to make simple tracking of armor damage for "enemy" mechs easy to do.
+
+## out of scope
+this app will not track critical damage or any specific internal modifications of the mech
+this app will not track pilot effects/damage
+this app will not directly track heat or the impact of heat effects on the mech, those should be handled outside and applied manually as "other" modifiers
+
+# technical Overview
 static web-app
 use typescript
 target hosting is github.io pages
@@ -143,3 +152,51 @@ use the megamek api (https://api.quartermaster-command.services, documentation f
 - Display a dash instead of zero for locations with no damage.
 - Order locations by their first appearance in the hit-location table for the facing used when the volley was fired.
 - Include all damage groups and floating-critical damage in the total for their actual hit location; clear the summary when volley results are cleared.
+
+---
+# bugs
+
+## jumpjets showing up as weapons
+when loading the ANH-2L, the jump jets are being shown as weapons
+
+---
+
+# ideas
+
+## improved mech picker
+ability to pick custom mechs from /mechs/ folder, or to open a stock mech from the megamek API/repository/MUL
+
+## long-term record of "Battles" & ability to track multiple mechs
+starting screen is dialog to load existing Battle or create new (local storage in browser)
+create new lets you name the Battle, declare "teams" within the Battle (1-N, name and color), and then add mechs from mech picker to each team
+tabs at the top of the attack screen (or some other picker on mobile) to switch between mechs/teams
+
+## disable weapons
+long-tapping a weapon (or double-clicking on desktop) should give the option (with confirmation dialog) to disable a weapon: if disabled it cannot be selected for firing and is ignored by the app. same action can re-enable it later if desired.
+
+## Damage Tracking
+screen for tracking damage to mech
+shows all damage locations, total and current armor & internals, tap location and enter a number to apply damage to that location
+
+## Apply Damage button & picker
+requires "battles" to be implemented, requires "Damage tracking" to be implemented
+at the end of the Volley Results section, add an option to select the target from other mechs in the battle and then apply the damage numbers to that mech directly
+
+## support for non-mech record sheets
+infantry, vehicles, aerospace, artillery, etc
+
+## Multiplayer mode
+(intended to allow other players at the table to 'submit' their attack results to the GM's authoritative list)
+use Firebase as a backend to allow synchronization between multiple clients, anonymous authentication
+one user would be the Host, they would select teh Battle and that battle would generate a Lobby Code (6-character alpha-numeric value), store host ID as part of the lobby data
+lobbies should be automatically deleted after 24 hours
+other users could join that lobby by entering that code, specifying their name and team
+- consider host generating separate lobby codes per team? or how would the user 'pick' their team during the connection process?
+host records are authoritative, but clients can send damage updates 
+- need concurrency checking to make sure host's record hasn't already been updated by another, show notification but allow option to 'merge' additional damage on same target
+- host should receive a notification of incoming damage updates, should show source, target, damage, and allow them to approve, reject, or modify the damage update
+
+## GM/Client mode
+requires Multiplayer
+clients can only see mechs the host selects as "visible to all"
+clients can only see mech damage records on mechs that are not their team as "color spectrum" without being able to see actual numbers, shifting from a strong green through yellow and into strong red before becoming an empty frame indicating that all armor in that location is gone. This should be very similar to the display for the MechWarrior games.
