@@ -108,6 +108,22 @@ const locationTable: Record<Facing, Record<number, string>> = {
   }
 };
 
+export function summarizeDamageByLocation(attacks: AttackResult[], facing: Facing): { location: string; damage: number }[] {
+  const totals = new Map<string, number>();
+  for (let roll = 3; roll <= 12; roll += 1) {
+    const location = locationTable[facing][roll];
+    if (!totals.has(location)) totals.set(location, 0);
+  }
+  for (const attack of attacks) {
+    for (const hit of attack.damageLocations) {
+      const current = totals.get(hit.location);
+      if (current === undefined) throw new Error(`Unknown hit location: ${hit.location}`);
+      totals.set(hit.location, current + hit.damage);
+    }
+  }
+  return Array.from(totals, ([location, damage]) => ({ location, damage }));
+}
+
 export function rollD6(): number {
   const cryptoApi = globalThis.crypto;
   if (!cryptoApi?.getRandomValues) {

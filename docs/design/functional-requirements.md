@@ -104,7 +104,7 @@ For "Floating Crit" results, roll again to deterimine the location of the crit a
 
 ## Update 2: Compact mobile volley results
 
-- Use compact results when the viewport is at or below the mobile-width breakpoint (480px), or the browser identifies itself as a mobile user agent.
+- Use compact results when the viewport is at or below the mobile-width breakpoint (768px), or the browser identifies itself as a mobile user agent.
 - In compact mode, show each weapon’s name, hit/miss outcome, damage, and hit location in a collapsed accordion row.
 - Tapping a weapon row expands it to show the remaining attack details, including the target number, to-hit roll, cluster roll, and hit-location roll.
 - Keep the full, expanded result cards on desktop layouts.
@@ -136,3 +136,10 @@ use the megamek api (https://api.quartermaster-command.services, documentation f
 - Record every 2D6 total, including to-hit, cluster, hit-location, and floating critical rerolls, in the current browser tab's session.
 - Provide a gear button near the bottom of the page that opens a chart of roll counts for totals 2 through 12.
 - Provide an option to clear the recorded history and reset the chart.
+
+## Damage by location
+
+- After the volley results, show total damage for every hit location, including locations with no damage.
+- Display a dash instead of zero for locations with no damage.
+- Order locations by their first appearance in the hit-location table for the facing used when the volley was fired.
+- Include all damage groups and floating-critical damage in the total for their actual hit location; clear the summary when volley results are cleared.

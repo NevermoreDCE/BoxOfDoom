@@ -1,11 +1,11 @@
 import "./style.css";
-import { getWeaponRange, parseMechs, resolveAttack, type AttackResult, type Facing, type Mech, type Weapon } from "./game";
+import { getWeaponRange, parseMechs, resolveAttack, summarizeDamageByLocation, type AttackResult, type Facing, type Mech, type Weapon } from "./game";
 import { RollHistory } from "./roll-history";
 
 const mechFiles = import.meta.glob("../mechs/*.txt", { eager: true, query: "?raw", import: "default" }) as Record<string, string>;
 const mechs = parseMechs(mechFiles);
 const app = document.querySelector<HTMLDivElement>("#app");
-const mobileBreakpoint = window.matchMedia("(max-width: 480px)");
+const mobileBreakpoint = window.matchMedia("(max-width: 768px)");
 const mobileUserAgent = /Android|iPhone|iPad|iPod|Mobile|Windows Phone/i.test(navigator.userAgent);
 
 if (!app) throw new Error("The application root element is missing.");
@@ -13,6 +13,7 @@ if (!app) throw new Error("The application root element is missing.");
 let activeMech: Mech | undefined = mechs[0];
 let selectedWeapons = shortRangeWeapons(activeMech, 6);
 let results: AttackResult[] = [];
+let resultsFacing: Facing = "Front";
 let statusMessage = "";
 let compactResults = mobileBreakpoint.matches || mobileUserAgent;
 
@@ -83,6 +84,11 @@ app.innerHTML = `
           </div>
         </div>
         <div id="results" class="results-empty">Your attack results will appear here.</div>
+        <section id="location-summary" class="location-summary" aria-labelledby="location-summary-title" hidden>
+          <h3 id="location-summary-title">Damage by location</h3>
+          <p id="location-summary-facing" class="location-summary-facing"></p>
+          <dl id="location-damage-list" class="location-damage-list"></dl>
+        </section>
       </section>
     `}
     <footer>
@@ -203,13 +209,19 @@ if (mechs.length > 0) {
     );
     getElement("total-damage").textContent = String(totalDamage);
     getElement("psr-required").hidden = totalDamage < 20;
+    getElement("location-summary").hidden = attacks.length === 0;
     if (attacks.length === 0) {
       container.className = "results-empty";
       container.textContent = "Your attack results will appear here.";
+      getElement("location-damage-list").innerHTML = "";
       return;
     }
     container.className = "result-list";
     container.innerHTML = attacks.map((attack) => resultCard(attack, compactResults)).join("");
+    getElement("location-summary-facing").textContent = `${resultsFacing} facing`;
+    getElement("location-damage-list").innerHTML = summarizeDamageByLocation(attacks, resultsFacing)
+      .map(({ location, damage }) => `<div><dt>${escapeHtml(location)}</dt><dd>${damage === 0 ? '<span aria-label="No damage">-</span>' : damage}</dd></div>`)
+      .join("");
   };
 
   mobileBreakpoint.addEventListener("change", () => {
@@ -275,11 +287,12 @@ if (mechs.length > 0) {
       return;
     }
     const targetNumber = updateTargetNumber();
+    resultsFacing = facing.value as Facing;
     results = selected.map((weapon) => {
       if (!weapon.ranges) throw new Error(`Missing range data for ${weapon.name}.`);
       const modifier = getWeaponRange(weapon.ranges, distance).modifier;
       if (modifier === null) throw new Error(`${weapon.name} is out of range.`);
-      return resolveAttack(weapon, targetNumber + modifier, facing.value as Facing, undefined, (total) => history.record(total));
+      return resolveAttack(weapon, targetNumber + modifier, resultsFacing, undefined, (total) => history.record(total));
     });
     statusMessage = "";
     renderStatus();

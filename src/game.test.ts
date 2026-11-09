@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getClusterHits, getWeaponRange, parseMech, resolveAttack, type Weapon } from "./game";
+import { getClusterHits, getWeaponRange, parseMech, resolveAttack, summarizeDamageByLocation, type Weapon } from "./game";
 import annihilatorExport from "../mechs/Annihilator ANH-1A.txt?raw";
 import gladiatorExport from "../mechs/Gladiator GLD-3RX.txt?raw";
 
@@ -56,6 +56,35 @@ Mystery Cannon         RA        5          4       5.0
 });
 
 describe("attack resolution", () => {
+  it("sums direct, cluster, and floating critical damage in hit-chart order for each facing", () => {
+    const laser: Weapon = { id: "laser", name: "Medium Laser", location: "RA", heat: 3, ranges: null, profile: { kind: "direct", damage: 5 } };
+    const lrm: Weapon = { id: "lrm", name: "LRM 5", location: "RT", heat: 2, ranges: null, profile: { kind: "cluster", rackSize: 5, damagePerProjectile: 1, missilesPerLocation: 5 } };
+    const dice = [6, 6, 1, 1, 1, 2, 6, 6, 6, 6, 1, 2];
+    const roll = () => {
+      const die = dice.shift();
+      if (die === undefined) throw new Error("Unexpected die roll");
+      return die;
+    };
+    const attacks = [resolveAttack(laser, 8, "Front", roll), resolveAttack(lrm, 8, "Front", roll)];
+    expect(summarizeDamageByLocation(attacks, "Front")).toEqual([
+      { location: "Right Arm", damage: 10 },
+      { location: "Right Leg", damage: 0 },
+      { location: "Right Torso", damage: 0 },
+      { location: "Center Torso", damage: 0 },
+      { location: "Left Torso", damage: 0 },
+      { location: "Left Leg", damage: 0 },
+      { location: "Left Arm", damage: 0 },
+      { location: "Head", damage: 0 }
+    ]);
+    expect(summarizeDamageByLocation(attacks, "Rear").map((row) => row.location))
+      .toEqual(summarizeDamageByLocation(attacks, "Front").map((row) => row.location));
+    expect(summarizeDamageByLocation(attacks, "Left").map((row) => row.location))
+      .toEqual(["Left Leg", "Left Arm", "Left Torso", "Center Torso", "Right Torso", "Right Arm", "Right Leg", "Head"]);
+    expect(summarizeDamageByLocation(attacks, "Right").map((row) => row.location))
+      .toEqual(["Right Leg", "Right Arm", "Right Torso", "Center Torso", "Left Torso", "Left Arm", "Left Leg", "Head"]);
+    expect(dice).toEqual([]);
+  });
+
   it("uses the supplied cluster-hit table for an LRM 5 rack", () => {
     expect([2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((roll) => getClusterHits(5, roll)))
       .toEqual([1, 2, 2, 3, 3, 3, 3, 4, 4, 5, 5]);

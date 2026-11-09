@@ -68,6 +68,13 @@ h2 { margin: 0 0 1rem; color: #fff; font-size: 1.15rem; }
 .psr-warning { padding: .3rem .5rem; border: 1px solid #7f1d1d; border-radius: .45rem; color: #fecaca; background: #450a0a; font-size: .72rem; font-weight: 850; white-space: nowrap; }
 .psr-warning[hidden] { display: none; }
 .result-list { display: grid; gap: .75rem; }
+.location-summary { margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid var(--border); }
+.location-summary[hidden] { display: none; }
+.location-summary h3 { margin: 0; font-size: 1rem; }
+.location-summary-facing { margin: .35rem 0 .75rem; color: var(--muted); font-size: .8rem; }
+.location-damage-list { margin: 0; }
+.location-damage-list > div { display: flex; justify-content: space-between; gap: 1rem; padding: .45rem .25rem; border-top: 1px solid #263449; }
+.location-damage-list dd { margin: 0; font-weight: 750; font-variant-numeric: tabular-nums; }
 .result-card { padding: .9rem; border: 1px solid var(--border); border-radius: .75rem; background: #0e1727; }
 .compact-results .result-list { gap: .45rem; }
 .compact-results .compact-result { overflow: hidden; padding: 0; }
