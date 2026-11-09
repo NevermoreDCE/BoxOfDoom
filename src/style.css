@@ -52,6 +52,13 @@ h2 { margin: 0 0 1rem; color: #fff; font-size: 1.15rem; }
 .status { min-height: 1.3rem; margin: .65rem 0 0; color: var(--muted); font-size: .9rem; }
 .error-text, .error { color: #fca5a5; }
 .results-empty, .notice { color: var(--muted); line-height: 1.5; }
+.results-header { display: flex; align-items: flex-start; justify-content: space-between; gap: .75rem; }
+.results-header h2 { margin-bottom: 1rem; }
+.damage-summary { display: flex; align-items: center; justify-content: flex-end; gap: .5rem; margin-bottom: 1rem; text-align: right; }
+.damage-label { color: var(--muted); font-size: .8rem; }
+.damage-summary strong { color: #fff; font-size: 1.25rem; }
+.psr-warning { padding: .3rem .5rem; border: 1px solid #7f1d1d; border-radius: .45rem; color: #fecaca; background: #450a0a; font-size: .72rem; font-weight: 850; white-space: nowrap; }
+.psr-warning[hidden] { display: none; }
 .result-list { display: grid; gap: .75rem; }
 .result-card { padding: .9rem; border: 1px solid var(--border); border-radius: .75rem; background: #0e1727; }
 .result-heading { display: flex; align-items: start; justify-content: space-between; gap: .6rem; }

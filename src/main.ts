@@ -67,7 +67,14 @@ app.innerHTML = `
       </section>
 
       <section class="panel results-panel" aria-labelledby="results-title">
-        <h2 id="results-title">Volley results</h2>
+        <div class="results-header">
+          <h2 id="results-title">Volley results</h2>
+          <div class="damage-summary" aria-live="polite">
+            <span class="damage-label">Total damage</span>
+            <strong id="total-damage">0</strong>
+            <span id="psr-required" class="psr-warning" hidden>PSR required</span>
+          </div>
+        </div>
         <div id="results" class="results-empty">Your attack results will appear here.</div>
       </section>
     `}
@@ -122,6 +129,12 @@ if (mechs.length > 0) {
 
   const renderResults = (attacks: AttackResult[]): void => {
     const container = getElement("results");
+    const totalDamage = attacks.reduce(
+      (total, attack) => total + attack.damageLocations.reduce((damage, location) => damage + location.damage, 0),
+      0
+    );
+    getElement("total-damage").textContent = String(totalDamage);
+    getElement("psr-required").hidden = totalDamage < 20;
     if (attacks.length === 0) {
       container.className = "results-empty";
       container.textContent = "Your attack results will appear here.";
