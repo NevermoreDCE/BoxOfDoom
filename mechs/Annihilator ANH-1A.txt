@@ -1,0 +1,82 @@
+Annihilator ANH-1A
+
+Mass: 100 tons
+Chassis: Star League MN-01
+Power Plant: Nissan 200
+Cruising Speed: 21.6 kph
+Maximum Speed: 32.4 kph
+Jump Jets: None
+     Jump Capacity: 0 meters
+Jump Booster Capacity: 0 meters
+Armor: Starshield Special-b
+Armament:
+     4 Medium Laser
+     4 AC/10
+Manufacturer: Refit
+     Primary Factory: Various
+Communication System: Garret T19-G
+Targeting & Tracking System: Wasat Aggressor Type 5
+Introduction Year: 3009
+Tech Rating/Availability: D/X-E-D-D
+Cost: 7,696,667 C-bills
+
+Overview
+Originally developed in the final year of the Amaris Civil War as the ultimate fixed position city defense BattleMech.
+
+Capabilities
+The Annihilator is armed with an arsenal that is built to instill fear in an enemy as much as damage them. The 100-ton 'Mech has a maximum speed of 32.4 km/h, making it one of the slowest 'Mechs ever designed together with the UrbanMech. It is by no means intended to use speed to outmaneuver an enemy, instead depending on its twelve and a half tons of armor to weather any fire that is directed at the 'Mech.
+
+Deployment
+The actual variant that showed up with Wolf's Dragoons, the -1A was armed with four Autocannon/10s and four Medium Lasers. While less accurate and unable to use cluster rounds, the 1A was still a highly destructive and dangerous 'Mech that no MechWarrior looked forward to engaging.
+
+History
+The Annihilator was built as a sign of the military strength of both the Star League in Exile and the newly created Clans. Discontinued before the Clans' Golden Century, in one of their few missteps, the Wolf's Dragoons brought a number of unknown designs with them in 3009, raising more questions to their origins while at the same time adding to their mystique. It was exclusive to the Dragoons until the Jihad disseminated the design to Arc-Royal due to the strengthening of the relationship that Wolf's Dragoons forged with the Kell Hounds and Clan Wolf-in-Exile following their flight from Outreach.
+
+Type: Annihilator
+Technology Base: Inner Sphere (Introductory)
+Tonnage: 100
+Battle Value: 1,434
+
+Equipment                                          Mass
+Internal Structure                                   10
+Engine                        200 Fusion            8.5
+	Walking MP: 2
+	Running MP: 3
+	Jumping MP: 0
+Heat Sink                     18                      8
+Gyro                                                  2
+Cockpit                                               3
+Armor Factor                  200                  12.5
+
+                          Internal   Armor   
+                          Structure  Value   
+     Head                    3         9     
+     Center Torso            31        25    
+     Center Torso (rear)               10    
+     R/L Torso               21        21    
+     R/L Torso (rear)                  9     
+     R/L Arm                 17        24    
+     R/L Leg                 21        24    
+
+
+Right Arm Actuators: Shoulder, Upper Arm, Lower Arm
+Left Arm Actuators: Shoulder, Upper Arm, Lower Arm
+
+Weapons
+and Ammo              Location  Critical   Heat    Tonnage
+2 Heat Sink              LL        2        -       2.0   
+2 Medium Laser           CT        2        3       2.0   
+3 Heat Sink              RT        3        -       3.0   
+AC/10 Ammo (20)          RT        2        -       2.0   
+AC/10                    RT        7        3       12.0  
+Medium Laser             LA        1        3       1.0   
+AC/10                    LA        7        3       12.0  
+3 Heat Sink              LT        3        -       3.0   
+AC/10 Ammo (20)          LT        2        -       2.0   
+AC/10                    LT        7        3       12.0  
+2 Heat Sink              RL        2        -       2.0   
+Medium Laser             RA        1        3       1.0   
+AC/10                    RA        7        3       12.0  
+
+Features the following design quirks: Easy to Maintain
+
