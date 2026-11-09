@@ -4,6 +4,8 @@ import { parseMechs, resolveAttack, type AttackResult, type Facing, type Mech, t
 const mechFiles = import.meta.glob("../mechs/*.txt", { eager: true, query: "?raw", import: "default" }) as Record<string, string>;
 const mechs = parseMechs(mechFiles);
 const app = document.querySelector<HTMLDivElement>("#app");
+const mobileBreakpoint = window.matchMedia("(max-width: 480px)");
+const mobileUserAgent = /Android|iPhone|iPad|iPod|Mobile|Windows Phone/i.test(navigator.userAgent);
 
 if (!app) throw new Error("The application root element is missing.");
 
@@ -11,6 +13,7 @@ let activeMech: Mech | undefined = mechs[0];
 let selectedWeapons = new Set(activeMech?.weapons.map((weapon) => weapon.id) ?? []);
 let results: AttackResult[] = [];
 let statusMessage = "";
+let compactResults = mobileBreakpoint.matches || mobileUserAgent;
 
 app.innerHTML = `
   <main class="shell">
@@ -82,6 +85,8 @@ app.innerHTML = `
   </main>
 `;
 
+app.classList.toggle("compact-results", compactResults);
+
 if (mechs.length > 0) {
   const mechSelect = getElement<HTMLSelectElement>("mech-select");
   const gunnery = getElement<HTMLSelectElement>("gunnery");
@@ -141,8 +146,14 @@ if (mechs.length > 0) {
       return;
     }
     container.className = "result-list";
-    container.innerHTML = attacks.map((attack) => resultCard(attack)).join("");
+    container.innerHTML = attacks.map((attack) => resultCard(attack, compactResults)).join("");
   };
+
+  mobileBreakpoint.addEventListener("change", () => {
+    compactResults = mobileBreakpoint.matches || mobileUserAgent;
+    app.classList.toggle("compact-results", compactResults);
+    renderResults(results);
+  });
 
   mechSelect.addEventListener("change", () => {
     activeMech = mechs.find((mech) => mech.id === mechSelect.value);
@@ -201,15 +212,15 @@ function weaponRow(weapon: Weapon, checked: boolean): string {
   `;
 }
 
-function resultCard(attack: AttackResult): string {
+function resultCard(attack: AttackResult, compact: boolean): string {
   const dice = `${attack.hitDice[0]} + ${attack.hitDice[1]} = ${attack.hitRoll}`;
   let detail: string;
+  const damageTotal = attack.damageLocations.reduce((sum, location) => sum + location.damage, 0);
   if (!attack.hit) {
     detail = `<p class="result-outcome miss">Miss · no damage</p>`;
   } else if (attack.weapon.profile?.kind === "utility") {
     detail = `<p class="result-outcome hit">Hit · no direct damage</p>`;
   } else {
-    const damageTotal = attack.damageLocations.reduce((sum, location) => sum + location.damage, 0);
     const clusterText = attack.projectilesHit === undefined
       ? ""
       : `<p class="cluster-detail">Cluster roll ${attack.clusterRoll}: ${attack.projectilesHit} missiles hit</p>`;
@@ -222,12 +233,30 @@ function resultCard(attack: AttackResult): string {
           </li>`).join("")}</ul>`;
     detail = `<p class="result-outcome hit">Hit · ${damageTotal} total damage</p>${clusterText}${locations}`;
   }
-  return `
-    <article class="result-card">
+  const expandedContent = `
       <div class="result-heading"><h3>${escapeHtml(attack.weapon.name)} <span>${escapeHtml(attack.weapon.location)}</span></h3><span class="tn">TN ${attack.targetNumber}</span></div>
       <p class="roll-detail">To-hit roll: ${dice}</p>
       ${detail}
-    </article>
+  `;
+  if (!compact) return `<article class="result-card">${expandedContent}</article>`;
+
+  const locationSummary = attack.damageLocations.map((location) =>
+    `${location.damage} to ${escapeHtml(location.location)}${location.critical ? " (crit)" : ""}`
+  ).join(", ");
+  const damageSummary = locationSummary
+    ? `Total ${damageTotal} damage · ${locationSummary}`
+    : attack.projectilesHit === 0
+      ? "0 damage · No missiles hit"
+      : "0 damage · No location";
+  return `
+    <details class="result-card compact-result">
+      <summary class="compact-summary">
+        <span class="compact-name">${escapeHtml(attack.weapon.name)}</span>
+        <span class="compact-outcome ${attack.hit ? "hit" : "miss"}">${attack.hit ? "Hit" : "Miss"}</span>
+        <span class="compact-damage-location">${damageSummary}</span>
+      </summary>
+      <div class="compact-details">${expandedContent}</div>
+    </details>
   `;
 }
 
