@@ -93,6 +93,25 @@ h2 { margin: 0 0 1rem; color: #fff; font-size: 1.15rem; }
 .critical { margin-left: .25rem; color: #fca5a5; font-size: .72rem; font-weight: 900; }
 .dice-note { color: var(--muted); font-size: .78rem; }
 footer { padding: .5rem .25rem; font-size: .8rem; text-align: center; }
+.gear-button, .diagnostics-close { min-width: 44px; min-height: 44px; border: 0; border-radius: .5rem; color: var(--muted); background: transparent; cursor: pointer; }
+.gear-button { margin-left: .25rem; font-size: 1.15rem; vertical-align: middle; }
+.gear-button:hover, .diagnostics-close:hover { color: #fff; background: #263449; }
+.gear-button:focus-visible, .diagnostics-close:focus-visible, .reset-button:focus-visible { outline: 3px solid #fb923c; outline-offset: 2px; }
+.diagnostics-has-error { color: #fca5a5; }
+.diagnostics-dialog { width: min(100% - 2rem, 480px); max-height: calc(100% - 2rem); padding: 1.25rem; border: 1px solid var(--border); border-radius: 1rem; color: #e5e7eb; background: var(--surface); }
+.diagnostics-dialog::backdrop { background: rgb(0 0 0 / 70%); }
+.diagnostics-heading { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
+.diagnostics-heading h2 { margin: 0; }
+.diagnostics-close { font-size: 1.5rem; }
+.diagnostics-description, #roll-count { color: var(--muted); font-size: .85rem; line-height: 1.45; }
+.diagnostics-error { color: #fca5a5; font-size: .85rem; }
+.diagnostics-error:empty { display: none; }
+.roll-chart { display: grid; gap: .4rem; margin: 1rem 0; }
+.roll-chart-row { display: grid; grid-template-columns: 2rem minmax(0, 1fr) 2.5rem; align-items: center; gap: .5rem; font-size: .8rem; }
+.roll-chart-total, .roll-chart-count { text-align: right; font-variant-numeric: tabular-nums; }
+.roll-chart-track { height: .85rem; overflow: hidden; border-radius: .25rem; background: #263449; }
+.roll-chart-bar { display: block; height: 100%; border-radius: .25rem; background: #fb923c; }
+.reset-button { min-height: 44px; padding: .6rem .9rem; border: 1px solid #7f1d1d; border-radius: .6rem; color: #fecaca; background: #450a0a; font-weight: 700; cursor: pointer; }
 
 @media (max-width: 480px) {
   .shell { width: min(100% - 1rem, 760px); padding-top: 1.5rem; }

@@ -121,8 +121,10 @@ export function rollD6(): number {
   return (value[0] % 6) + 1;
 }
 
-export function roll2D6(rollDie: () => number = rollD6): [number, number] {
-  return [rollDie(), rollDie()];
+export function roll2D6(rollDie: () => number = rollD6, recordRoll?: (total: number) => void): [number, number] {
+  const dice: [number, number] = [rollDie(), rollDie()];
+  recordRoll?.(dice[0] + dice[1]);
+  return dice;
 }
 
 export function getClusterHits(rackSize: number, roll: number): number {
@@ -134,13 +136,13 @@ export function getClusterHits(rackSize: number, roll: number): number {
   return table[rackIndex];
 }
 
-function getLocation(facing: Facing, rollDie: () => number): DamageLocation {
-  const [first, second] = roll2D6(rollDie);
+function getLocation(facing: Facing, rollDie: () => number, recordRoll?: (total: number) => void): DamageLocation {
+  const [first, second] = roll2D6(rollDie, recordRoll);
   const locationRoll = first + second;
   if (locationRoll === 2) {
     let reroll: number;
     do {
-      const [rerollFirst, rerollSecond] = roll2D6(rollDie);
+      const [rerollFirst, rerollSecond] = roll2D6(rollDie, recordRoll);
       reroll = rerollFirst + rerollSecond;
     } while (reroll === 2);
     return {
@@ -163,13 +165,14 @@ export function resolveAttack(
   weapon: Weapon,
   targetNumber: number,
   facing: Facing,
-  rollDie: () => number = rollD6
+  rollDie: () => number = rollD6,
+  recordRoll?: (total: number) => void
 ): AttackResult {
   if (!weapon.profile) {
     throw new Error(`${weapon.name} is not supported yet. Deselect it to fire the other weapons.`);
   }
 
-  const hitDice = roll2D6(rollDie);
+  const hitDice = roll2D6(rollDie, recordRoll);
   const hitRoll = hitDice[0] + hitDice[1];
   if (hitRoll < targetNumber) {
     return { weapon, targetNumber, hitRoll, hitDice, hit: false, damageLocations: [] };
@@ -178,7 +181,7 @@ export function resolveAttack(
     return { weapon, targetNumber, hitRoll, hitDice, hit: true, damageLocations: [] };
   }
   if (weapon.profile.kind === "direct") {
-    const location = getLocation(facing, rollDie);
+    const location = getLocation(facing, rollDie, recordRoll);
     return {
       weapon,
       targetNumber,
@@ -189,13 +192,13 @@ export function resolveAttack(
     };
   }
 
-  const clusterDice = roll2D6(rollDie);
+  const clusterDice = roll2D6(rollDie, recordRoll);
   const clusterRoll = clusterDice[0] + clusterDice[1];
   const projectilesHit = getClusterHits(weapon.profile.rackSize, clusterRoll);
   const damageLocations: DamageLocation[] = [];
   for (let remaining = projectilesHit; remaining > 0;) {
     const projectilesAtLocation = Math.min(remaining, weapon.profile.missilesPerLocation);
-    const location = getLocation(facing, rollDie);
+    const location = getLocation(facing, rollDie, recordRoll);
     damageLocations.push({
       ...location,
       damage: projectilesAtLocation * weapon.profile.damagePerProjectile

@@ -130,3 +130,9 @@ use the megamek api (https://api.quartermaster-command.services, documentation f
 - Show weapons beyond long range as out of range and prevent them from being selected or fired.
 - Show weapons without supported profiles or range data as unavailable rather than guessing their range.
 - The MegaMek API host was unavailable during implementation; the local range profiles use the corresponding published MegaMek source definitions as an approved fallback.
+
+## Dice roll diagnostics
+
+- Record every 2D6 total, including to-hit, cluster, hit-location, and floating critical rerolls, in the current browser tab's session.
+- Provide a gear button near the bottom of the page that opens a chart of roll counts for totals 2 through 12.
+- Provide an option to clear the recorded history and reset the chart.

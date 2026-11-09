@@ -1,5 +1,6 @@
 import "./style.css";
 import { getWeaponRange, parseMechs, resolveAttack, type AttackResult, type Facing, type Mech, type Weapon } from "./game";
+import { RollHistory } from "./roll-history";
 
 const mechFiles = import.meta.glob("../mechs/*.txt", { eager: true, query: "?raw", import: "default" }) as Record<string, string>;
 const mechs = parseMechs(mechFiles);
@@ -84,11 +85,57 @@ app.innerHTML = `
         <div id="results" class="results-empty">Your attack results will appear here.</div>
       </section>
     `}
-    <footer>Rolls use your browser's cryptographically secure random number generator.</footer>
+    <footer>
+      <span>Rolls use your browser's cryptographically secure random number generator.</span>
+      <button id="open-diagnostics" class="gear-button" type="button" aria-label="Open dice roll diagnostics" title="Dice roll diagnostics">&#9881;</button>
+    </footer>
+    <dialog id="diagnostics-dialog" class="diagnostics-dialog" aria-labelledby="diagnostics-title">
+      <div class="diagnostics-heading">
+        <h2 id="diagnostics-title">Dice roll diagnostics</h2>
+        <button id="close-diagnostics" class="diagnostics-close" type="button" aria-label="Close diagnostics">&times;</button>
+      </div>
+      <p class="diagnostics-description">2D6 totals for to-hit, cluster, and hit-location rolls, including rerolls. History is kept in this tab until it closes.</p>
+      <p id="diagnostics-error" class="diagnostics-error" role="alert"></p>
+      <p id="roll-count" aria-live="polite"></p>
+      <div id="roll-chart" class="roll-chart" role="img" aria-label="Dice roll totals chart"></div>
+      <button id="reset-rolls" class="reset-button" type="button">Reset roll history</button>
+    </dialog>
   </main>
 `;
 
 app.classList.toggle("compact-results", compactResults);
+
+const history = new RollHistory((message) => {
+  getElement("diagnostics-error").textContent = message;
+  getElement("open-diagnostics").classList.toggle("diagnostics-has-error", Boolean(message));
+  getElement("open-diagnostics").title = message || "Dice roll diagnostics";
+}, () => window.sessionStorage);
+const diagnosticsDialog = getElement<HTMLDialogElement>("diagnostics-dialog");
+const renderRollChart = (): void => {
+  const counts = history.counts();
+  const maximum = Math.max(...counts, 1);
+  const total = counts.reduce((sum, count) => sum + count, 0);
+  getElement("roll-count").textContent = `${total} ${total === 1 ? "roll" : "rolls"} recorded`;
+  const chart = getElement("roll-chart");
+  chart.setAttribute("aria-label", `Dice roll totals: ${counts.map((count, index) => `${index + 2}: ${count}`).join(", ")}`);
+  chart.innerHTML = counts.map((count, index) => `
+    <div class="roll-chart-row" aria-hidden="true">
+      <span class="roll-chart-total">${index + 2}</span>
+      <span class="roll-chart-track"><span class="roll-chart-bar" style="width: ${count / maximum * 100}%"></span></span>
+      <span class="roll-chart-count">${count}</span>
+    </div>
+  `).join("");
+};
+
+getElement<HTMLButtonElement>("open-diagnostics").addEventListener("click", () => {
+  renderRollChart();
+  diagnosticsDialog.showModal();
+});
+getElement<HTMLButtonElement>("close-diagnostics").addEventListener("click", () => diagnosticsDialog.close());
+getElement<HTMLButtonElement>("reset-rolls").addEventListener("click", () => {
+  history.reset();
+  renderRollChart();
+});
 
 if (mechs.length > 0) {
   const mechSelect = getElement<HTMLSelectElement>("mech-select");
@@ -232,7 +279,7 @@ if (mechs.length > 0) {
       if (!weapon.ranges) throw new Error(`Missing range data for ${weapon.name}.`);
       const modifier = getWeaponRange(weapon.ranges, distance).modifier;
       if (modifier === null) throw new Error(`${weapon.name} is out of range.`);
-      return resolveAttack(weapon, targetNumber + modifier, facing.value as Facing);
+      return resolveAttack(weapon, targetNumber + modifier, facing.value as Facing, undefined, (total) => history.record(total));
     });
     statusMessage = "";
     renderStatus();
