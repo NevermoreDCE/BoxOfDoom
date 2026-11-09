@@ -8,14 +8,18 @@ describe("mech equipment parsing", () => {
     const annihilator = parseMech("annihilator", annihilatorExport);
     const gladiator = parseMech("gladiator", gladiatorExport);
 
+    expect(annihilator.heatSinkCapacity).toBe(18);
+    expect(gladiator.heatSinkCapacity).toBe(26);
     expect(annihilator.weapons).toHaveLength(8);
     expect(gladiator.weapons).toHaveLength(13);
     expect(gladiator.weapons.filter((weapon) => weapon.name.startsWith("LRM 5"))).toHaveLength(4);
+    expect(gladiator.weapons.filter((weapon) => weapon.name.startsWith("LRM 5")).every((weapon) => weapon.heat === 2)).toBe(true);
     expect(gladiator.weapons.every((weapon) => weapon.profile !== null)).toBe(true);
   });
 
   it("expands weapon quantities, recognizes supported equipment, and ignores non-weapons", () => {
     const mech = parseMech("test", `Test Mech
+Heat Sink 10
 Weapons
 and Ammo              Location  Critical   Heat    Tonnage
 2 Medium Laser         CT        2          3       2.0
@@ -30,16 +34,20 @@ TAG                    HD        1          0       1.0
     expect(mech.weapons[0].profile).toEqual({ kind: "direct", damage: 5 });
     expect(mech.weapons[2].profile).toEqual({ kind: "direct", damage: 10 });
     expect(mech.weapons[3].profile).toEqual({ kind: "utility" });
+    expect(mech.weapons.map((weapon) => weapon.heat)).toEqual([3, 3, 3, 0]);
+    expect(mech.heatSinkCapacity).toBe(10);
   });
 
   it("preserves unsupported weapons so the user can see and deselect them", () => {
     const mech = parseMech("test", `Test
+Double Heat Sink 10 [18]
 Weapons
 and Ammo              Location  Critical   Heat    Tonnage
 Mystery Cannon         RA        5          4       5.0
 `);
     expect(mech.weapons).toHaveLength(1);
     expect(mech.weapons[0].profile).toBeNull();
+    expect(mech.heatSinkCapacity).toBe(18);
   });
 });
 
@@ -51,7 +59,7 @@ describe("attack resolution", () => {
 
   it("groups LRM damage by five and marks floating criticals", () => {
     const weapon: Weapon = {
-      id: "lrm", name: "LRM 5", location: "RT",
+      id: "lrm", name: "LRM 5", location: "RT", heat: 2,
       profile: { kind: "cluster", rackSize: 5, damagePerProjectile: 1, missilesPerLocation: 5 }
     };
     const rolls = [6, 6, 1, 1, 1, 1, 4, 4];
@@ -64,7 +72,7 @@ describe("attack resolution", () => {
   });
 
   it("reports a missed shot without rolling cluster or hit locations", () => {
-    const weapon: Weapon = { id: "laser", name: "Medium Laser", location: "RA", profile: { kind: "direct", damage: 5 } };
+    const weapon: Weapon = { id: "laser", name: "Medium Laser", location: "RA", heat: 3, profile: { kind: "direct", damage: 5 } };
     const rolls = [1, 1];
     const result = resolveAttack(weapon, 4, "Front", () => rolls.shift() ?? 1);
     expect(result.hit).toBe(false);

@@ -47,6 +47,10 @@ h2 { margin: 0 0 1rem; color: #fff; font-size: 1.15rem; }
 .unsupported .weapon-name, .unsupported .weapon-detail { color: #fca5a5; }
 .target-number { display: flex; align-items: center; justify-content: space-between; margin: 1.25rem 0 1rem; padding: .9rem 1rem; border: 1px solid #4b3b2e; border-radius: .75rem; color: #fed7aa; background: #251b17; }
 .target-number strong { color: #fff; font-size: 1.5rem; }
+.heat-summary { gap: .75rem; margin-bottom: .35rem; }
+.heat-summary > span { min-width: 0; }
+.heat-summary strong { flex: 0 0 auto; white-space: nowrap; }
+.heat-reminder { margin: 0; color: var(--muted); font-size: .8rem; line-height: 1.4; }
 .fire-button { width: 100%; min-height: 54px; border: 0; border-radius: .7rem; color: #1c120d; background: #fb923c; font-weight: 850; cursor: pointer; }
 .fire-button:hover { background: #fdba74; }
 .status { min-height: 1.3rem; margin: .65rem 0 0; color: var(--muted); font-size: .9rem; }

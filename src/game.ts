@@ -9,12 +9,14 @@ export type Weapon = {
   id: string;
   name: string;
   location: string;
+  heat: number;
   profile: WeaponProfile | null;
 };
 
 export type Mech = {
   id: string;
   name: string;
+  heatSinkCapacity: number;
   weapons: Weapon[];
 };
 
@@ -210,6 +212,13 @@ function weaponProfile(name: string): WeaponProfile | null {
 export function parseMech(id: string, contents: string): Mech {
   const lines = contents.split(/\r?\n/);
   const name = lines.find((line) => line.trim())?.trim() || id;
+  const heatSinkLine = lines.find((line) => /^\s*(?:Double\s+)?Heat Sink\b/i.test(line));
+  const heatSink = heatSinkLine?.match(/^\s*(Double\s+)?Heat Sink\s+(\d+)(?:\s+\[(\d+)\])?/i);
+  if (!heatSink) {
+    throw new Error(`Could not determine heat-sink capacity for '${name}'.`);
+  }
+  const sinkCount = Number(heatSink[2]);
+  const heatSinkCapacity = Number(heatSink[3] ?? (heatSink[1] ? sinkCount * 2 : sinkCount));
   const weaponsHeader = lines.findIndex((line) => line.trim() === "Weapons");
   const equipmentHeader = weaponsHeader < 0
     ? -1
@@ -217,11 +226,12 @@ export function parseMech(id: string, contents: string): Mech {
   const weapons: Weapon[] = [];
   if (equipmentHeader >= 0) {
     lines.slice(equipmentHeader + 1).forEach((line, lineIndex) => {
-      const row = line.match(/^\s*(\d+)?\s*(.*?)\s{2,}([A-Z]{2})\s+\d+\s+[-\d]+\s+[-\d.]+\s*$/);
+      const row = line.match(/^\s*(\d+)?\s*(.*?)\s{2,}([A-Z]{2})\s+\d+\s+([-\d]+)\s+[-\d.]+\s*$/);
       if (!row) return;
       const quantity = Number(row[1] || 1);
       const weaponName = row[2].trim().replace(/\s+/g, " ");
       const location = row[3];
+      const heat = row[4] === "-" ? 0 : Number(row[4]);
       if (/heat sink|ammo|ecm suite|c3 computer|targeting computer/i.test(weaponName)) return;
 
       const profile = weaponProfile(weaponName);
@@ -231,12 +241,13 @@ export function parseMech(id: string, contents: string): Mech {
           id: `${id}-${lineIndex}-${index}`,
           name: `${weaponName}${suffix}`,
           location,
+          heat,
           profile
         });
       }
     });
   }
-  return { id, name, weapons };
+  return { id, name, heatSinkCapacity, weapons };
 }
 
 export function parseMechs(files: Record<string, string>): Mech[] {

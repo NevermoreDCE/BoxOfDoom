@@ -91,3 +91,28 @@ for each selected weapon:
 | 12 | Head | Head | Head |
 
 For "Floating Crit" results, roll again to deterimine the location of the crit and indicate that it is a crit in that location.
+
+---
+
+# Post-MVP Updates
+
+## Update 1: Volley damage total and PSR
+
+- Add the volley’s total applied damage to the top-right of the Volley Results header.
+- Show “PSR required” when the volley’s total damage is 20 or greater.
+- Reset the total to 0 when volley results are cleared.
+
+## Update 2: Compact mobile volley results
+
+- Use compact results when the viewport is at or below the mobile-width breakpoint (480px), or the browser identifies itself as a mobile user agent.
+- In compact mode, show each weapon’s name, hit/miss outcome, damage, and hit location in a collapsed accordion row.
+- Tapping a weapon row expands it to show the remaining attack details, including the target number, to-hit roll, cluster roll, and hit-location roll.
+- Keep the full, expanded result cards on desktop layouts.
+
+## Update 3: Selected weapon heat
+
+- Add a heat summary box at the end of the weapon list, styled like the GATOR target-number display.
+- Show the sum of the Heat values for currently selected weapons over the 'Mech's total heat-sink capacity.
+- For double heat sinks, use the total capacity shown in square brackets rather than the number of sinks.
+- Update the displayed heat whenever a weapon is selected or deselected, or the active 'Mech changes.
+- Immediately below the heat box, remind users that the total covers weapon heat only and other sources such as movement may apply separately.

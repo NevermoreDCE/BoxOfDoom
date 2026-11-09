@@ -30,6 +30,8 @@ app.innerHTML = `
           <select id="mech-select">${mechs.map((mech, index) => `<option value="${escapeHtml(mech.id)}"${index === 0 ? " selected" : ""}>${escapeHtml(mech.name)}</option>`).join("")}</select>
         </label>
         <div id="weapon-list" class="weapon-list"></div>
+        <div class="target-number heat-summary"><span>Heat Generated / Heat Sink Capacity</span><strong id="heat-generated">0 / ${activeMech?.heatSinkCapacity ?? 0}</strong></div>
+        <p class="heat-reminder">Weapon heat only, other heat sources such as movement may apply separately</p>
       </section>
 
       <section class="panel" aria-labelledby="gator-title">
@@ -104,6 +106,13 @@ if (mechs.length > 0) {
     return targetNumber;
   };
 
+  const updateHeatGenerated = (): void => {
+    const heat = activeMech?.weapons
+      .filter((weapon) => selectedWeapons.has(weapon.id))
+      .reduce((total, weapon) => total + weapon.heat, 0) ?? 0;
+    getElement("heat-generated").textContent = `${heat} / ${activeMech?.heatSinkCapacity ?? 0}`;
+  };
+
   const renderWeapons = (): void => {
     if (!activeMech) return;
     const list = getElement("weapon-list");
@@ -121,6 +130,7 @@ if (mechs.length > 0) {
         if (!id) return;
         if (checkbox.checked) selectedWeapons.add(id);
         else selectedWeapons.delete(id);
+        updateHeatGenerated();
         statusMessage = "";
         renderStatus();
       });
@@ -161,6 +171,7 @@ if (mechs.length > 0) {
     results = [];
     statusMessage = "";
     renderWeapons();
+    updateHeatGenerated();
     renderStatus();
     renderResults(results);
   });
@@ -192,6 +203,7 @@ if (mechs.length > 0) {
   });
 
   renderWeapons();
+  updateHeatGenerated();
   updateTargetNumber();
 }
 
