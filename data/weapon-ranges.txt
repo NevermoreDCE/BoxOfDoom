@@ -1,0 +1,17 @@
+name,minimum,short,medium,long
+Small Laser,0,1,2,3
+Medium Laser,0,3,6,9
+Large Laser,0,5,10,15
+PPC,3,6,12,18
+AC/2,4,8,16,24
+AC/5,3,6,12,18
+AC/10,0,5,10,15
+AC/20,0,3,6,9
+LRM 5,6,7,14,21
+LRM 10,6,7,14,21
+LRM 15,6,7,14,21
+LRM 20,6,7,14,21
+SRM 2,0,3,6,9
+SRM 4,0,3,6,9
+SRM 6,0,3,6,9
+TAG,0,5,9,15

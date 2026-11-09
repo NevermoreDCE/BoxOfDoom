@@ -1,5 +1,5 @@
 import "./style.css";
-import { parseMechs, resolveAttack, type AttackResult, type Facing, type Mech, type Weapon } from "./game";
+import { getWeaponRange, parseMechs, resolveAttack, type AttackResult, type Facing, type Mech, type Weapon } from "./game";
 
 const mechFiles = import.meta.glob("../mechs/*.txt", { eager: true, query: "?raw", import: "default" }) as Record<string, string>;
 const mechs = parseMechs(mechFiles);
@@ -10,7 +10,7 @@ const mobileUserAgent = /Android|iPhone|iPad|iPod|Mobile|Windows Phone/i.test(na
 if (!app) throw new Error("The application root element is missing.");
 
 let activeMech: Mech | undefined = mechs[0];
-let selectedWeapons = new Set(activeMech?.weapons.map((weapon) => weapon.id) ?? []);
+let selectedWeapons = shortRangeWeapons(activeMech, 6);
 let results: AttackResult[] = [];
 let statusMessage = "";
 let compactResults = mobileBreakpoint.matches || mobileUserAgent;
@@ -28,6 +28,11 @@ app.innerHTML = `
         <label class="field">
           <span>'Mech</span>
           <select id="mech-select">${mechs.map((mech, index) => `<option value="${escapeHtml(mech.id)}"${index === 0 ? " selected" : ""}>${escapeHtml(mech.name)}</option>`).join("")}</select>
+        </label>
+        <label class="field range-field">
+          <span>Range to target</span>
+          <input id="range-to-target" type="number" min="0" max="25" step="1" value="6" inputmode="numeric" aria-describedby="range-help" />
+          <span id="range-help" class="field-hint">Enter 0 to 25 hexes. Changing range selects short-range weapons.</span>
         </label>
         <div id="weapon-list" class="weapon-list"></div>
         <div class="target-number heat-summary"><span>Heat Generated / Heat Sink Capacity</span><strong id="heat-generated">0 / ${activeMech?.heatSinkCapacity ?? 0}</strong></div>
@@ -58,15 +63,11 @@ app.innerHTML = `
             <input id="other" type="number" step="1" value="0" inputmode="numeric" />
           </label>
           <label class="field">
-            <span>Range</span>
-            <select id="range"><option value="0" selected>Short (+0)</option><option value="2">Medium (+2)</option><option value="4">Long (+4)</option></select>
-          </label>
-          <label class="field">
             <span>Target facing</span>
             <select id="facing"><option selected>Front</option><option>Left</option><option>Right</option><option>Rear</option></select>
           </label>
         </div>
-        <div class="target-number"><span>Target number</span><strong id="target-number">8</strong></div>
+        <div class="target-number"><span>Target number</span><strong id="target-number">8 + Range</strong></div>
         <button id="fire" class="fire-button" type="button">Fire selected weapons</button>
         <p id="status" class="status" role="status" aria-live="polite"></p>
       </section>
@@ -95,15 +96,20 @@ if (mechs.length > 0) {
   const movement = getElement<HTMLSelectElement>("movement");
   const targetMovement = getElement<HTMLSelectElement>("target-movement");
   const other = getElement<HTMLInputElement>("other");
-  const range = getElement<HTMLSelectElement>("range");
+  const range = getElement<HTMLInputElement>("range-to-target");
   const facing = getElement<HTMLSelectElement>("facing");
   const fireButton = getElement<HTMLButtonElement>("fire");
 
   const updateTargetNumber = (): number => {
     const targetNumber = Number(gunnery.value) + Number(movement.value) + Number(targetMovement.value) +
-      Number(other.value || 0) + Number(range.value);
-    getElement("target-number").textContent = String(targetNumber);
+      Number(other.value || 0);
+    getElement("target-number").textContent = `${targetNumber} + Range`;
     return targetNumber;
+  };
+
+  const targetRange = (): number | null => {
+    const distance = range.valueAsNumber;
+    return Number.isInteger(distance) && distance >= 0 && distance <= 25 ? distance : null;
   };
 
   const updateHeatGenerated = (): void => {
@@ -122,7 +128,7 @@ if (mechs.length > 0) {
     }
     list.innerHTML = `
       <div class="list-heading"><h3>Weapons</h3><span>${activeMech.weapons.length} listed</span></div>
-      ${activeMech.weapons.map((weapon) => weaponRow(weapon, selectedWeapons.has(weapon.id))).join("")}
+      ${activeMech.weapons.map((weapon) => weaponRow(weapon, selectedWeapons.has(weapon.id), targetRange())).join("")}
     `;
     list.querySelectorAll<HTMLInputElement>("input[data-weapon-id]").forEach((checkbox) => {
       checkbox.addEventListener("change", () => {
@@ -167,7 +173,8 @@ if (mechs.length > 0) {
 
   mechSelect.addEventListener("change", () => {
     activeMech = mechs.find((mech) => mech.id === mechSelect.value);
-    selectedWeapons = new Set(activeMech?.weapons.map((weapon) => weapon.id) ?? []);
+    const distance = targetRange();
+    selectedWeapons = distance === null ? new Set() : shortRangeWeapons(activeMech, distance);
     results = [];
     statusMessage = "";
     renderWeapons();
@@ -176,12 +183,32 @@ if (mechs.length > 0) {
     renderResults(results);
   });
 
-  [gunnery, movement, targetMovement, other, range].forEach((control) => {
+  range.addEventListener("input", () => {
+    const distance = targetRange();
+    if (distance !== null) selectedWeapons = shortRangeWeapons(activeMech, distance);
+    range.setCustomValidity(distance === null ? "Enter a whole number from 0 to 25." : "");
+    getElement("range-help").textContent = distance === null
+      ? "Enter a whole number from 0 to 25 hexes."
+      : "Enter 0 to 25 hexes. Changing range selects short-range weapons.";
+    renderWeapons();
+    updateHeatGenerated();
+    statusMessage = "";
+    renderStatus();
+  });
+
+  [gunnery, movement, targetMovement, other].forEach((control) => {
     control.addEventListener("input", updateTargetNumber);
     control.addEventListener("change", updateTargetNumber);
   });
 
   fireButton.addEventListener("click", () => {
+    const distance = targetRange();
+    if (distance === null) {
+      range.reportValidity();
+      statusMessage = "Range to target must be a whole number from 0 to 25.";
+      renderStatus();
+      return;
+    }
     const selected = activeMech?.weapons.filter((weapon) => selectedWeapons.has(weapon.id)) ?? [];
     if (selected.length === 0) {
       statusMessage = "Select at least one weapon to fire.";
@@ -194,8 +221,19 @@ if (mechs.length > 0) {
       renderStatus();
       return;
     }
+    const unavailable = selected.find((weapon) => !weapon.ranges || getWeaponRange(weapon.ranges, distance).modifier === null);
+    if (unavailable) {
+      statusMessage = `${unavailable.name} is out of range or has no range data.`;
+      renderStatus();
+      return;
+    }
     const targetNumber = updateTargetNumber();
-    results = selected.map((weapon) => resolveAttack(weapon, targetNumber, facing.value as Facing));
+    results = selected.map((weapon) => {
+      if (!weapon.ranges) throw new Error(`Missing range data for ${weapon.name}.`);
+      const modifier = getWeaponRange(weapon.ranges, distance).modifier;
+      if (modifier === null) throw new Error(`${weapon.name} is out of range.`);
+      return resolveAttack(weapon, targetNumber + modifier, facing.value as Facing);
+    });
     statusMessage = "";
     renderStatus();
     renderResults(results);
@@ -207,7 +245,13 @@ if (mechs.length > 0) {
   updateTargetNumber();
 }
 
-function weaponRow(weapon: Weapon, checked: boolean): string {
+function shortRangeWeapons(mech: Mech | undefined, distance: number): Set<string> {
+  return new Set(mech?.weapons
+    .filter((weapon) => weapon.profile && weapon.ranges && getWeaponRange(weapon.ranges, distance).band === "Short")
+    .map((weapon) => weapon.id) ?? []);
+}
+
+function weaponRow(weapon: Weapon, checked: boolean, distance: number | null): string {
   const details = weapon.profile
     ? weapon.profile.kind === "direct"
       ? `${weapon.profile.damage} damage`
@@ -215,11 +259,16 @@ function weaponRow(weapon: Weapon, checked: boolean): string {
         ? `${weapon.profile.rackSize}-missile rack`
         : "No direct damage"
     : "Unsupported weapon";
+  const range = weapon.ranges && distance !== null ? getWeaponRange(weapon.ranges, distance) : null;
+  const rangeText = !weapon.ranges ? "Range data unavailable"
+    : !range ? "Enter a valid range"
+      : range.modifier === null ? range.band : `${range.band} (+${range.modifier})`;
+  const disabled = !weapon.profile || !range || range.modifier === null;
   return `
     <label class="weapon-row${weapon.profile ? "" : " unsupported"}">
-      <input type="checkbox" data-weapon-id="${escapeHtml(weapon.id)}"${checked ? " checked" : ""} />
+      <input type="checkbox" data-weapon-id="${escapeHtml(weapon.id)}"${checked ? " checked" : ""}${disabled ? " disabled" : ""} />
       <span class="weapon-name">${escapeHtml(weapon.name)} <span class="weapon-location">${escapeHtml(weapon.location)}</span></span>
-      <span class="weapon-detail">${details}</span>
+      <span class="weapon-detail">${details} · ${rangeText}</span>
     </label>
   `;
 }

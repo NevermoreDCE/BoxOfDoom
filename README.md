@@ -10,7 +10,9 @@ npm install
 npm run dev
 ```
 
-The app reads `.txt` 'Mech exports from `mechs/` at build time. Weapon rows for the included 'Mechs are parsed from their equipment tables. Supported damage profiles include common lasers, PPCs, autocannons, LRMs, SRMs, and TAG; other weapon rows stay visible but must be deselected before firing.
+The app reads `.txt` 'Mech exports from `mechs/` at build time. Weapon rows for the included 'Mechs are parsed from their equipment tables. Supported damage profiles include common lasers, PPCs, autocannons, LRMs, SRMs, and TAG; weapons without a supported damage profile or bundled range data stay visible but cannot be selected.
+
+Weapon ranges are bundled from `data/weapon-ranges.txt`, using the Inner Sphere weapon definitions in the [MegaMek source](https://github.com/MegaMek/megamek/tree/995e0ad5a81d4cd3de2fde3395ccf0a7066d1f87/megamek/src/megamek/common/weapons). The requested MegaMek API was unavailable when these values were collected. Range changes reset the selection to supported short-range weapons; medium- and long-range weapons can be selected manually, while out-of-range weapons cannot be fired.
 
 ## Validate and build
 

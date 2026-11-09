@@ -116,3 +116,17 @@ For "Floating Crit" results, roll again to deterimine the location of the crit a
 - For double heat sinks, use the total capacity shown in square brackets rather than the number of sinks.
 - Update the displayed heat whenever a weapon is selected or deselected, or the active 'Mech changes.
 - Immediately below the heat box, remind users that the total covers weapon heat only and other sources such as movement may apply separately.
+
+## Rework range
+need to rework how the Range modifier is entered and used.
+it should be entered as a numeric field above the weapons labeled "Range to target", allowing a value of 0 to 25, default to 6
+Each weapon should then calculate its range band based on the selected range to target to identify if it is short, medium, or long range and display that information as part of the weapon profile. it should also track the range modifier for each weapon and apply that to the TN for that weapon.
+Default to all weapons in short range selected, other weapons not selected by default.
+if the weapon has a minimum range and the range-to-target is shorter than that minimum range, apply a +1 modifier to the TN for each value the range is inside the minimum (e.g. a range-to-target of 3 for a weapon with a minimum range of 6 should apply a +3 modifier).
+Update the target number display to indicate "# + Range".
+use the megamek api (https://api.quartermaster-command.services, documentation found at https://github.com/MegaMek/api-data) to find weapon profiles, load the weapon profiles into text files in a ./data/ folder in this repository
+
+- When the range changes, reset the selection to supported short-range weapons. Medium- and long-range weapons may be selected manually.
+- Show weapons beyond long range as out of range and prevent them from being selected or fired.
+- Show weapons without supported profiles or range data as unavailable rather than guessing their range.
+- The MegaMek API host was unavailable during implementation; the local range profiles use the corresponding published MegaMek source definitions as an approved fallback.

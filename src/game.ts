@@ -1,4 +1,10 @@
+import rangeData from "../data/weapon-ranges.txt?raw";
+
 export type Facing = "Front" | "Left" | "Right" | "Rear";
+
+export type WeaponRanges = { minimum: number; short: number; medium: number; long: number };
+export type RangeBand = "Short" | "Medium" | "Long" | "Out of range";
+export type RangeResult = { band: RangeBand; modifier: number | null };
 
 export type WeaponProfile =
   | { kind: "direct"; damage: number }
@@ -11,6 +17,7 @@ export type Weapon = {
   location: string;
   heat: number;
   profile: WeaponProfile | null;
+  ranges: WeaponRanges | null;
 };
 
 export type Mech = {
@@ -40,6 +47,30 @@ export type AttackResult = {
 };
 
 const clusterSizes = [2, 3, 4, 5, 6, 9, 10, 12, 15, 20] as const;
+const weaponRanges = new Map<string, WeaponRanges>();
+for (const line of rangeData.trim().split(/\r?\n/).slice(1)) {
+  const [name, minimum, short, medium, long, ...extra] = line.split(",");
+  const values = [minimum, short, medium, long];
+  if (!name || extra.length || values.some((value) => !/^\d+$/.test(value ?? ""))) {
+    throw new Error(`Invalid weapon range data: ${line}`);
+  }
+  const ranges = { minimum: Number(minimum), short: Number(short), medium: Number(medium), long: Number(long) };
+  if (ranges.short > ranges.medium || ranges.medium > ranges.long || weaponRanges.has(name.toLowerCase())) {
+    throw new Error(`Invalid or duplicate weapon range data: ${line}`);
+  }
+  weaponRanges.set(name.toLowerCase(), ranges);
+}
+
+export function getWeaponRange(ranges: WeaponRanges, distance: number): RangeResult {
+  if (!Number.isInteger(distance) || distance < 0 || distance > 25) {
+    throw new Error("Range to target must be a whole number from 0 to 25.");
+  }
+  if (distance > ranges.long) return { band: "Out of range", modifier: null };
+  const band = distance <= ranges.short ? "Short" : distance <= ranges.medium ? "Medium" : "Long";
+  const bandModifier = band === "Short" ? 0 : band === "Medium" ? 2 : 4;
+  return { band, modifier: bandModifier + Math.max(0, ranges.minimum - distance) };
+}
+
 const clusterTable: Record<number, readonly number[]> = {
   2: [1, 1, 1, 1, 2, 3, 3, 4, 5, 6],
   3: [1, 1, 2, 2, 2, 3, 3, 4, 5, 6],
@@ -242,7 +273,8 @@ export function parseMech(id: string, contents: string): Mech {
           name: `${weaponName}${suffix}`,
           location,
           heat,
-          profile
+          profile,
+          ranges: weaponRanges.get(weaponName.toLowerCase().replace(/^autocannon\s*\/\s*/, "ac/").replace(/^ac\s*\/\s*/, "ac/")) ?? null
         });
       }
     });
