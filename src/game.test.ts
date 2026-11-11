@@ -1,7 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { getClusterHits, getWeaponRange, parseMech, resolveAttack, summarizeDamageByLocation, type Weapon } from "./game";
+import { getClusterHits, getWeaponRange, parseMech, parseMechs, parseMtf, resolveAttack, summarizeDamageByLocation, type Weapon } from "./game";
 import annihilatorExport from "../mechs/Annihilator ANH-1A.txt?raw";
-import gladiatorExport from "../mechs/Gladiator GLD-3RX.txt?raw";
+
+const gladiatorExport = `Gladiator GLD-3RX
+Double Heat Sink 13 [26]
+Weapons
+and Ammo              Location  Critical   Heat    Tonnage
+4 LRM 5                  RT        4        2       8.0
+4 Medium Laser           LA        4        3       4.0
+4 Medium Laser           RA        4        3       4.0
+TAG                      HD        1        0       1.0
+`;
 
 describe("mech equipment parsing", () => {
   it("reads every weapon from the supplied 'Mech exports", () => {
@@ -52,6 +61,112 @@ Mystery Cannon         RA        5          4       5.0
     expect(mech.weapons).toHaveLength(1);
     expect(mech.weapons[0].profile).toBeNull();
     expect(mech.heatSinkCapacity).toBe(18);
+  });
+
+  it("excludes jump jets from the ANH-2L equipment table while keeping its weapons", () => {
+    const mech = parseMech("anh-2l", `Annihilator ANH-2L
+Double Heat Sink 13 [26]
+Weapons
+and Ammo              Location  Critical   Heat    Tonnage
+LRM 5 Ammo (24)          LL        1        -       1.0
+Jump Jet                 LL        1        -       2.0
+2 LRM 5                  CT        2        2       4.0
+7 LRM 5                  LA        7        2       14.0
+Jump Jet                 RL        1        -       2.0
+LRM 5                    HD        1        2       2.0
+9 LRM 5                  RA        9        2       18.0
+Mystery Cannon           RT        5        4       5.0
+`);
+    expect(mech.weapons).toHaveLength(20);
+    expect(mech.weapons.filter((weapon) => weapon.name.startsWith("LRM 5"))).toHaveLength(19);
+    expect(mech.weapons.at(-1)).toMatchObject({ name: "Mystery Cannon", profile: null });
+  });
+
+  it("reads modern MTF weapon mounts, heat sinks, and supported weapon definitions", () => {
+    const mtf = `# Comment before the fields
+generator:MegaMek Suite
+chassis:Gladiator
+model:GLD-3RX
+techbase:Inner Sphere
+heat sinks:13 IS Double
+Weapons:13
+${Array(6).fill("Medium Laser, Left Torso").join("\n")}
+${Array(2).fill("Medium Laser, Right Torso").join("\n")}
+${Array(4).fill("LRM 5, Right Torso").join("\n")}
+TAG, Head
+
+Left Torso:
+Medium Laser
+Medium Laser
+`;
+    const mech = parseMtf("gladiator.mtf", mtf);
+    expect(mech.name).toBe("Gladiator GLD-3RX");
+    expect(mech.heatSinkCapacity).toBe(26);
+    expect(mech.weapons).toHaveLength(13);
+    expect(new Set(mech.weapons.map((weapon) => weapon.id)).size).toBe(13);
+    expect(mech.weapons.filter((weapon) => weapon.name === "Medium Laser" && weapon.location === "LT")).toHaveLength(6);
+    expect(mech.weapons.filter((weapon) => weapon.name === "LRM 5" && weapon.location === "RT")).toHaveLength(4);
+    expect(mech.weapons[0]).toMatchObject({ heat: 3, profile: { kind: "direct", damage: 5 }, ranges: { minimum: 0, short: 3, medium: 6, long: 9 } });
+    expect(mech.weapons[8]).toMatchObject({ heat: 2, profile: { kind: "cluster", rackSize: 5 }, ranges: { minimum: 6, short: 7, medium: 14, long: 21 } });
+    expect(mech.weapons[12]).toMatchObject({ heat: 0, location: "HD", profile: { kind: "utility" } });
+  });
+
+  it("handles legacy MTF headers, quantities, rear mounts, and unknown weapons", () => {
+    const mech = parseMtf("legacy.mtf", `Version:1.1
+Test
+T-1
+TechBase:Inner Sphere
+Heat Sinks:10 Single
+Weapons:2
+2 Medium Laser (R), Left Torso (R)
+1 Mystery Cannon, Right Arm, Ammo:10
+`);
+    expect(mech.name).toBe("Test T-1");
+    expect(mech.heatSinkCapacity).toBe(10);
+    expect(mech.weapons).toHaveLength(3);
+    expect(mech.weapons.slice(0, 2).map((weapon) => [weapon.name, weapon.location, weapon.heat]))
+      .toEqual([["Medium Laser #1", "LT (R)", 3], ["Medium Laser #2", "LT (R)", 3]]);
+    expect(mech.weapons[2]).toMatchObject({ name: "Mystery Cannon", heat: null, profile: null, ranges: null });
+  });
+
+  it("does not apply Inner Sphere definitions to Clan or unspecified technology", () => {
+    for (const techBase of ["techbase:Clan", ""]) {
+      const mech = parseMtf("clan.mtf", `chassis:Test
+model:C
+${techBase}
+heat sinks:10 Clan Double
+Weapons:1
+LRM 5, Right Torso
+`);
+      expect(mech.weapons[0]).toMatchObject({ heat: null, profile: null, ranges: null });
+    }
+  });
+
+  it("rejects incomplete or malformed MTF data instead of silently omitting weapons", () => {
+    const valid = `chassis:Test
+model:T
+techbase:Inner Sphere
+heat sinks:10 Single
+Weapons:1
+PPC, Right Arm
+`;
+    expect(() => parseMtf("bad.mtf", valid.replace("10 Single", "10 Laser"))).toThrow(/heat-sink/);
+    expect(() => parseMtf("bad.mtf", valid.replace("Weapons:1", "Weapons:2"))).toThrow(/weapon entry 2/);
+    expect(() => parseMtf("bad.mtf", valid.replace("PPC, Right Arm", "0 PPC, Right Arm"))).toThrow(/quantity/);
+    expect(() => parseMtf("bad.mtf", valid.replace("model:T", ""))).toThrow(/chassis and model/);
+  });
+
+  it("loads and sorts both formats in one collection", () => {
+    const mechs = parseMechs({
+      "mechs/z.txt": annihilatorExport,
+      "mechs/Custom/a.mtf": `chassis:Atlas
+model:AS7
+techbase:Inner Sphere
+heat sinks:10 Single
+Weapons:0
+`
+    });
+    expect(mechs.map((mech) => mech.name)).toEqual(["Annihilator ANH-1A", "Atlas AS7"]);
   });
 });
 

@@ -16,7 +16,9 @@ target hosting is github.io pages
 must be mobile-friendly, very easy to use with touch-based inputs
 
 # data source
-read MegaMek export format files from the "mechs" folder
+read MegaMek `.txt` export and `.mtf` files from the "mechs" folder and its subfolders
+
+MTF weapon heat and ranges use bundled Inner Sphere definitions. Unsupported weapons and weapons from other or unspecified tech bases remain visible but cannot be selected.
 
 should be able to read in the equipment for a mech
 
@@ -156,36 +158,57 @@ use the megamek api (https://api.quartermaster-command.services, documentation f
 ---
 # bugs
 
-## jumpjets showing up as weapons
+## jumpjets showing up as weapons FIXED
 when loading the ANH-2L, the jump jets are being shown as weapons
 
 ---
 
 # ideas
 
-## improved mech picker
+## 1. improved mech picker
 ability to pick custom mechs from /mechs/ folder, or to open a stock mech from the megamek API/repository/MUL
 
-## long-term record of "Battles" & ability to track multiple mechs
-starting screen is dialog to load existing Battle or create new (local storage in browser)
-create new lets you name the Battle, declare "teams" within the Battle (1-N, name and color), and then add mechs from mech picker to each team
-tabs at the top of the attack screen (or some other picker on mobile) to switch between mechs/teams
+## 2. long-term record of "Battles" & ability to track multiple mechs
 
-## disable weapons
+### Battles and persistence
+- Store Battles in the browser's local storage so they persist between visits in the same browser and profile. Cross-device or cross-browser synchronization is out of scope; see Idea 9 for export and import.
+- When no Battle is open, start with a dialog to create a Battle or open an existing one. Remember the open Battle and restore it on the next visit. If the remembered Battle no longer exists, show the dialog instead. include an icon in the main screen to allow the user to pick another battle. since the state of a battle should always be saved-in-place, picking another battle while one is open should be able to 'context switch' without losing battle data.
+- Allow users to name and rename a Battle, and to delete it permanently after confirmation. Deletion removes the Battle entirely; there is no soft delete.
+- Save the Battle's identity, teams, and mech roster. Prepare each mech instance to hold future damage-tracking data using a stub or placeholder, but do not implement damage tracking as part of this idea. do not track the entire mech object, just the roster and damage.
+- Do not save attack settings, volley results, or a combat log.
+
+### Teams and mechs
+- Each Battle has one or more teams. Each team has a name and a color, both unique within that Battle. Teams may be empty.
+- Provide a fixed palette of 16 colorblind-safe options. Since colors alone cannot reliably distinguish 16 teams for every user, always identify teams by name as well as color. Unique colors limit a Battle to 16 teams.
+- Add mechs to a team using the existing picker and bundled mech files only. Loading designs from external sources is out of scope for this idea.
+- Allow multiple instances of the same chassis. Each instance has its own identity and a user-editable name or callsign, defaulting to the chassis name and a number, such as "Annihilator 1".
+- Allow users to remove a mech from a team. Mechs cannot be moved between teams; to change teams, remove the mech and add a new instance to the other team.
+
+### Attack screen
+- Provide tabs at the top of the attack screen, or a suitable mobile-friendly picker, to switch between teams and mechs.
+- Switching mechs starts a different mech's turn: reset the entire attack screen to its normal defaults, including weapon selections, range, modifiers, facing, and volley results. Do not retain or restore per-mech attack configurations or results.
+- Users configure each volley manually as needed, starting from the app's normal default selections.
+
+### Implementation considerations
+- Give Battles, teams, and mech instances stable, distinct identifiers; a mech instance is separate from its bundled chassis definition.
+- Version and validate saved Battle data so future damage-tracking changes can be migrated. Handle unavailable or invalid storage explicitly without silently discarding saved data.
+- Account for bundled mech definitions changing or disappearing in a later app version without silently losing a saved roster.
+
+## 3. disable weapons
 long-tapping a weapon (or double-clicking on desktop) should give the option (with confirmation dialog) to disable a weapon: if disabled it cannot be selected for firing and is ignored by the app. same action can re-enable it later if desired.
 
-## Damage Tracking
+## 4. Damage Tracking
 screen for tracking damage to mech
 shows all damage locations, total and current armor & internals, tap location and enter a number to apply damage to that location
 
-## Apply Damage button & picker
+## 5. Apply Damage button & picker
 requires "battles" to be implemented, requires "Damage tracking" to be implemented
 at the end of the Volley Results section, add an option to select the target from other mechs in the battle and then apply the damage numbers to that mech directly
 
-## support for non-mech record sheets
+## 6. support for non-mech record sheets
 infantry, vehicles, aerospace, artillery, etc
 
-## Multiplayer mode
+## 7. Multiplayer mode
 (intended to allow other players at the table to 'submit' their attack results to the GM's authoritative list)
 use Firebase as a backend to allow synchronization between multiple clients, anonymous authentication
 one user would be the Host, they would select teh Battle and that battle would generate a Lobby Code (6-character alpha-numeric value), store host ID as part of the lobby data
@@ -196,7 +219,10 @@ host records are authoritative, but clients can send damage updates
 - need concurrency checking to make sure host's record hasn't already been updated by another, show notification but allow option to 'merge' additional damage on same target
 - host should receive a notification of incoming damage updates, should show source, target, damage, and allow them to approve, reject, or modify the damage update
 
-## GM/Client mode
+## 8. GM/Client mode
 requires Multiplayer
 clients can only see mechs the host selects as "visible to all"
 clients can only see mech damage records on mechs that are not their team as "color spectrum" without being able to see actual numbers, shifting from a strong green through yellow and into strong red before becoming an empty frame indicating that all armor in that location is gone. This should be very similar to the display for the MechWarrior games.
+
+## 9. Battle export and import
+Allow users to export Battles and import them in another browser, profile, or device. Define the file format and behavior for importing a Battle that already exists when this idea is implemented.

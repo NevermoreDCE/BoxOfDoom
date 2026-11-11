@@ -2,7 +2,7 @@ import "./style.css";
 import { getWeaponRange, parseMechs, resolveAttack, summarizeDamageByLocation, type AttackResult, type Facing, type Mech, type Weapon } from "./game";
 import { RollHistory } from "./roll-history";
 
-const mechFiles = import.meta.glob("../mechs/*.txt", { eager: true, query: "?raw", import: "default" }) as Record<string, string>;
+const mechFiles = import.meta.glob(["../mechs/**/*.txt", "../mechs/**/*.mtf"], { eager: true, query: "?raw", import: "default" }) as Record<string, string>;
 const mechs = parseMechs(mechFiles);
 const app = document.querySelector<HTMLDivElement>("#app");
 const mobileBreakpoint = window.matchMedia("(max-width: 768px)");
@@ -24,12 +24,12 @@ app.innerHTML = `
       <h1>Box of Doom</h1>
       <p class="intro">Pick a 'Mech, set your GATOR modifiers, and resolve your volley.</p>
     </header>
-    ${mechs.length === 0 ? `<p class="notice error">No .txt 'Mech files were found in the mechs folder.</p>` : `
+    ${mechs.length === 0 ? `<p class="notice error">No .txt or .mtf 'Mech files were found in the mechs folder.</p>` : `
       <section class="panel" aria-labelledby="attacker-title">
         <h2 id="attacker-title">Attacker</h2>
         <label class="field">
           <span>'Mech</span>
-          <select id="mech-select">${mechs.map((mech, index) => `<option value="${escapeHtml(mech.id)}"${index === 0 ? " selected" : ""}>${escapeHtml(mech.name)}</option>`).join("")}</select>
+          <select id="mech-select">${mechs.map((mech, index) => `<option value="${escapeHtml(mech.id)}"${index === 0 ? " selected" : ""}>${escapeHtml(mech.name)}${mechs.some((other) => other !== mech && other.name === mech.name) ? ` (${escapeHtml(mech.id.replace(/^\.\.\/mechs\//, ""))})` : ""}</option>`).join("")}</select>
         </label>
         <label class="field range-field">
           <span>Range to target</span>
@@ -166,9 +166,10 @@ if (mechs.length > 0) {
   };
 
   const updateHeatGenerated = (): void => {
-    const heat = activeMech?.weapons
-      .filter((weapon) => selectedWeapons.has(weapon.id))
-      .reduce((total, weapon) => total + weapon.heat, 0) ?? 0;
+    const selected = activeMech?.weapons.filter((weapon) => selectedWeapons.has(weapon.id)) ?? [];
+    const heat = selected.some((weapon) => weapon.heat === null)
+      ? "Unknown"
+      : selected.reduce((total, weapon) => total + (weapon.heat ?? 0), 0);
     getElement("heat-generated").textContent = `${heat} / ${activeMech?.heatSinkCapacity ?? 0}`;
   };
 

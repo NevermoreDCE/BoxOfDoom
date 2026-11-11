@@ -15,7 +15,7 @@ export type Weapon = {
   id: string;
   name: string;
   location: string;
-  heat: number;
+  heat: number | null;
   profile: WeaponProfile | null;
   ranges: WeaponRanges | null;
 };
@@ -47,18 +47,22 @@ export type AttackResult = {
 };
 
 const clusterSizes = [2, 3, 4, 5, 6, 9, 10, 12, 15, 20] as const;
-const weaponRanges = new Map<string, WeaponRanges>();
+const weaponDefinitions = new Map<string, { ranges: WeaponRanges; heat: number }>();
 for (const line of rangeData.trim().split(/\r?\n/).slice(1)) {
-  const [name, minimum, short, medium, long, ...extra] = line.split(",");
-  const values = [minimum, short, medium, long];
+  const [name, minimum, short, medium, long, heat, ...extra] = line.split(",");
+  const values = [minimum, short, medium, long, heat];
   if (!name || extra.length || values.some((value) => !/^\d+$/.test(value ?? ""))) {
     throw new Error(`Invalid weapon range data: ${line}`);
   }
   const ranges = { minimum: Number(minimum), short: Number(short), medium: Number(medium), long: Number(long) };
-  if (ranges.short > ranges.medium || ranges.medium > ranges.long || weaponRanges.has(name.toLowerCase())) {
+  if (ranges.short > ranges.medium || ranges.medium > ranges.long || weaponDefinitions.has(name.toLowerCase())) {
     throw new Error(`Invalid or duplicate weapon range data: ${line}`);
   }
-  weaponRanges.set(name.toLowerCase(), ranges);
+  weaponDefinitions.set(name.toLowerCase(), { ranges, heat: Number(heat) });
+}
+
+function weaponDefinition(name: string): { ranges: WeaponRanges; heat: number } | undefined {
+  return weaponDefinitions.get(name.toLowerCase().replace(/^autocannon\s*\/\s*/, "ac/").replace(/^ac\s*\/\s*/, "ac/"));
 }
 
 export function getWeaponRange(ranges: WeaponRanges, distance: number): RangeResult {
@@ -282,7 +286,7 @@ export function parseMech(id: string, contents: string): Mech {
       const weaponName = row[2].trim().replace(/\s+/g, " ");
       const location = row[3];
       const heat = row[4] === "-" ? 0 : Number(row[4]);
-      if (/heat sink|ammo|ecm suite|c3 computer|targeting computer/i.test(weaponName)) return;
+      if (/heat sink|ammo|ecm suite|c3 computer|targeting computer|\bjump jets?\b/i.test(weaponName)) return;
 
       const profile = weaponProfile(weaponName);
       for (let index = 0; index < quantity; index += 1) {
@@ -293,7 +297,7 @@ export function parseMech(id: string, contents: string): Mech {
           location,
           heat,
           profile,
-          ranges: weaponRanges.get(weaponName.toLowerCase().replace(/^autocannon\s*\/\s*/, "ac/").replace(/^ac\s*\/\s*/, "ac/")) ?? null
+          ranges: weaponDefinition(weaponName)?.ranges ?? null
         });
       }
     });
@@ -301,8 +305,68 @@ export function parseMech(id: string, contents: string): Mech {
   return { id, name, heatSinkCapacity, weapons };
 }
 
+export function parseMtf(id: string, contents: string): Mech {
+  const lines = contents.split(/\r?\n/);
+  const field = (key: string): string | undefined => {
+    const prefix = `${key.toLowerCase()}:`;
+    return lines.find((line) => line.trim().toLowerCase().startsWith(prefix))?.trim().slice(prefix.length).trim();
+  };
+  const versionIndex = lines.findIndex((line) => /^\s*version\s*:/i.test(line));
+  const legacyName = versionIndex >= 0
+    ? lines.slice(versionIndex + 1).filter((line) => line.trim() && !line.trim().startsWith("#")).slice(0, 2).map((line) => line.trim())
+    : [];
+  const chassis = field("chassis") || legacyName[0];
+  const model = field("model") || legacyName[1];
+  if (!chassis || !model || chassis.includes(":") || model.includes(":")) {
+    throw new Error(`Could not determine chassis and model for '${id}'.`);
+  }
+  const name = `${chassis} ${model}`;
+  const sinks = field("heat sinks")?.match(/^(\d+)\s+(?:(?:IS|Clan)\s+)?(Single|Double)$/i);
+  if (!sinks) throw new Error(`Could not determine heat-sink capacity for '${name}'.`);
+  const heatSinkCapacity = Number(sinks[1]) * (sinks[2].toLowerCase() === "double" ? 2 : 1);
+  const weaponsIndex = lines.findIndex((line) => /^\s*weapons\s*:/i.test(line));
+  const header = weaponsIndex < 0 ? null : lines[weaponsIndex].match(/^\s*weapons\s*:\s*(\d+)\s*$/i);
+  if (!header) throw new Error(`Could not determine weapon count for '${name}'.`);
+
+  const techBase = field("techbase")?.toLowerCase();
+  const useInnerSphereDefinitions = techBase === "inner sphere";
+  const weapons: Weapon[] = [];
+  const count = Number(header[1]);
+  for (let index = 0; index < count; index += 1) {
+    const line = lines[weaponsIndex + 1 + index];
+    const parts = line?.split(",").map((part) => part.trim());
+    if (!parts || parts.length < 2 || !parts[0] || !parts[1] || parts[1].includes(":")) {
+      throw new Error(`Invalid weapon entry ${index + 1} for '${name}'.`);
+    }
+    const match = parts[0].match(/^(?:(\d+)\s+)?(.+?)(?:\s+\(R\))?$/i);
+    if (!match) throw new Error(`Invalid weapon entry ${index + 1} for '${name}'.`);
+    const quantity = Number(match[1] ?? 1);
+    if (quantity < 1) throw new Error(`Invalid weapon quantity in '${name}'.`);
+    const weaponName = match[2].replace(/\s+/g, " ");
+    const definition = useInnerSphereDefinitions ? weaponDefinition(weaponName) : undefined;
+    const rear = /\(R\)\s*$/i.test(parts[0]) || /\(R\)\s*$/i.test(parts[1]);
+    const locationNames: Record<string, string> = {
+      "head": "HD", "center torso": "CT", "left torso": "LT", "right torso": "RT",
+      "left arm": "LA", "right arm": "RA", "left leg": "LL", "right leg": "RL"
+    };
+    const rawLocation = parts[1].replace(/\s*\(R\)\s*$/i, "").trim();
+    const location = `${locationNames[rawLocation.toLowerCase()] ?? rawLocation}${rear ? " (R)" : ""}`;
+    for (let item = 0; item < quantity; item += 1) {
+      weapons.push({
+        id: `${id}-${index}-${item}`,
+        name: `${weaponName}${quantity > 1 ? ` #${item + 1}` : ""}`,
+        location,
+        heat: definition?.heat ?? null,
+        profile: useInnerSphereDefinitions ? weaponProfile(weaponName) : null,
+        ranges: definition?.ranges ?? null
+      });
+    }
+  }
+  return { id, name, heatSinkCapacity, weapons };
+}
+
 export function parseMechs(files: Record<string, string>): Mech[] {
   return Object.entries(files)
-    .map(([path, contents]) => parseMech(path, contents))
+    .map(([path, contents]) => /\.mtf$/i.test(path) ? parseMtf(path, contents) : parseMech(path, contents))
     .sort((left, right) => left.name.localeCompare(right.name));
 }
