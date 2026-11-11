@@ -1,0 +1,38 @@
+tech,name,internal,minimum,short,medium,long,heat,kind,damage,modifier
+Clan,ATM 12,CLATM12,4,5,10,15,8,special,variable,0
+Clan,Anti-Missile System,CLAntiMissileSystem,0,1,1,1,1,special,2,0
+Clan,Arrow IV,CLArrowIV,0,1,2,9,10,artillery,20,0
+Clan,ER Large Laser,CLERLargeLaser,0,8,15,25,12,direct,10,0
+Clan,ER Medium Laser,CLERMediumLaser,0,5,10,15,5,direct,7,0
+Clan,ER PPC,CLERPPC,0,7,14,23,15,direct,15,0
+Clan,ER Small Laser,CLERSmallLaser,0,2,4,6,2,direct,5,0
+Clan,Flamer,CLFlamer,0,1,2,3,3,special,2,0
+Clan,Gauss Rifle,CLGaussRifle,2,7,15,22,1,direct,15,0
+Clan,LB 2-X AC,CLLBXAC2,4,10,20,30,1,special,2,0
+Clan,LB 5-X AC,CLLBXAC5,3,8,15,24,1,special,5,0
+Clan,LB 10-X AC,CLLBXAC10,0,6,12,18,2,special,10,0
+Clan,LB 20-X AC,CLLBXAC20,0,4,8,12,6,special,20,0
+Clan,LRM 5,CLLRM5,0,7,14,21,2,cluster,1,0
+Clan,LRM 10,CLLRM10,0,7,14,21,4,cluster,1,0
+Clan,LRM 15,CLLRM15,0,7,14,21,5,cluster,1,0
+Clan,LRM 20,CLLRM20,0,7,14,21,6,cluster,1,0
+Clan,Large Pulse Laser,CLLargePulseLaser,0,6,14,20,10,direct,10,-2
+Clan,Machine Gun,CLMG,0,1,2,3,0,direct,2,0
+Clan,Medium Pulse Laser,CLMediumPulseLaser,0,4,8,12,4,direct,7,-2
+Clan,Narc,CLNarcBeacon,0,4,8,12,0,special,0,0
+Clan,SRM 2,CLSRM2,0,3,6,9,2,cluster,2,0
+Clan,SRM 4,CLSRM4,0,3,6,9,3,cluster,2,0
+Clan,SRM 6,CLSRM6,0,3,6,9,4,cluster,2,0
+Clan,Small Pulse Laser,CLSmallPulseLaser,0,2,4,6,2,direct,3,-2
+Clan,Streak SRM 2,CLStreakSRM2,0,4,8,12,2,special,2,0
+Clan,Streak SRM 4,CLStreakSRM4,0,4,8,12,3,special,2,0
+Clan,Streak SRM 6,CLStreakSRM6,0,4,8,12,4,special,2,0
+Clan,TAG,CLTAG,0,5,9,15,0,utility,0,0
+Clan,Ultra AC/2,CLUltraAC2,2,9,18,27,1,special,2,0
+Clan,Ultra AC/5,CLUltraAC5,0,7,14,21,1,special,5,0
+Clan,Ultra AC/10,CLUltraAC10,0,6,12,18,3,special,10,0
+Clan,Ultra AC/20,CLUltraAC20,0,4,8,12,7,special,20,0
+Inner Sphere,Anti-Missile System,ISAntiMissileSystem,0,1,1,1,1,special,2,0
+Inner Sphere,ER Large Laser,ISERLargeLaser,0,7,14,19,12,direct,8,0
+Inner Sphere,Gauss Rifle,ISGaussRifle,2,7,15,22,1,direct,15,0
+Inner Sphere,Medium Pulse Laser,ISMediumPulseLaser,0,2,4,6,4,direct,6,-2

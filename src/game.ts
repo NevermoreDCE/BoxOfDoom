@@ -1,4 +1,5 @@
 import rangeData from "../data/weapon-ranges.txt?raw";
+import additionalData from "../data/weapon-additional.txt?raw";
 
 export type Facing = "Front" | "Left" | "Right" | "Rear";
 
@@ -18,11 +19,16 @@ export type Weapon = {
   heat: number | null;
   profile: WeaponProfile | null;
   ranges: WeaponRanges | null;
+  techBase?: TechBase | null;
+  attackModifier?: number;
+  unavailableReason?: string;
 };
+export type TechBase = "Clan" | "Inner Sphere";
 
 export type Mech = {
   id: string;
   name: string;
+  chassis: string;
   heatSinkCapacity: number;
   weapons: Weapon[];
 };
@@ -47,7 +53,9 @@ export type AttackResult = {
 };
 
 const clusterSizes = [2, 3, 4, 5, 6, 9, 10, 12, 15, 20] as const;
-const weaponDefinitions = new Map<string, { ranges: WeaponRanges; heat: number }>();
+type WeaponDefinition = { ranges: WeaponRanges; heat: number; profile: WeaponProfile | null; modifier: number; artillery: boolean; internal: string };
+const weaponDefinitions = new Map<string, WeaponDefinition>();
+const definitionKey = (name: string, tech: TechBase): string => `${tech}:${name.toLowerCase().replace(/^autocannon\s*\/\s*/, "ac/").replace(/^ac\s*\/\s*/, "ac/")}`;
 for (const line of rangeData.trim().split(/\r?\n/).slice(1)) {
   const [name, minimum, short, medium, long, heat, ...extra] = line.split(",");
   const values = [minimum, short, medium, long, heat];
@@ -55,14 +63,33 @@ for (const line of rangeData.trim().split(/\r?\n/).slice(1)) {
     throw new Error(`Invalid weapon range data: ${line}`);
   }
   const ranges = { minimum: Number(minimum), short: Number(short), medium: Number(medium), long: Number(long) };
-  if (ranges.short > ranges.medium || ranges.medium > ranges.long || weaponDefinitions.has(name.toLowerCase())) {
+  const key = definitionKey(name, "Inner Sphere");
+  if (ranges.short > ranges.medium || ranges.medium > ranges.long || weaponDefinitions.has(key)) {
     throw new Error(`Invalid or duplicate weapon range data: ${line}`);
   }
-  weaponDefinitions.set(name.toLowerCase(), { ranges, heat: Number(heat) });
+  weaponDefinitions.set(key, { ranges, heat: Number(heat), profile: weaponProfile(name), modifier: 0, artillery: false, internal: `IS${name.replace(/[^a-z0-9]/gi, "")}` });
 }
 
-function weaponDefinition(name: string): { ranges: WeaponRanges; heat: number } | undefined {
-  return weaponDefinitions.get(name.toLowerCase().replace(/^autocannon\s*\/\s*/, "ac/").replace(/^ac\s*\/\s*/, "ac/"));
+for (const line of additionalData.trim().split(/\r?\n/).slice(1)) {
+  const [tech, name, internal, minimum, short, medium, long, heat, kind, damage, modifier, ...extra] = line.split(",");
+  if ((tech !== "Clan" && tech !== "Inner Sphere") || !name || !internal || extra.length ||
+      [minimum, short, medium, long, heat].some((value) => !/^\d+$/.test(value ?? "")) ||
+      !/^-?\d+$/.test(modifier ?? "") || !/^(?:\d+|variable)$/.test(damage ?? "") ||
+      !["direct", "cluster", "utility", "special", "artillery"].includes(kind)) {
+    throw new Error(`Invalid weapon data: ${line}`);
+  }
+  const ranges = { minimum: Number(minimum), short: Number(short), medium: Number(medium), long: Number(long) };
+  const key = definitionKey(name, tech);
+  if (ranges.short > ranges.medium || ranges.medium > ranges.long || weaponDefinitions.has(key)) throw new Error(`Invalid or duplicate weapon data: ${line}`);
+  const profile: WeaponProfile | null = kind === "direct" && damage !== "variable" ? { kind: "direct", damage: Number(damage) }
+    : kind === "cluster" ? weaponProfile(name)
+      : kind === "utility" ? { kind: "utility" } : null;
+  if ((kind === "direct" || kind === "cluster") && !profile) throw new Error(`Invalid weapon profile: ${line}`);
+  weaponDefinitions.set(key, { ranges, heat: Number(heat), profile, modifier: Number(modifier), artillery: kind === "artillery", internal });
+}
+
+function weaponDefinition(name: string, tech: TechBase): WeaponDefinition | undefined {
+  return weaponDefinitions.get(definitionKey(name, tech));
 }
 
 export function getWeaponRange(ranges: WeaponRanges, distance: number): RangeResult {
@@ -73,6 +100,10 @@ export function getWeaponRange(ranges: WeaponRanges, distance: number): RangeRes
   const band = distance <= ranges.short ? "Short" : distance <= ranges.medium ? "Medium" : "Long";
   const bandModifier = band === "Short" ? 0 : band === "Medium" ? 2 : 4;
   return { band, modifier: bandModifier + Math.max(0, ranges.minimum - distance) };
+}
+
+export function weaponTargetNumber(base: number, rangeModifier: number, weapon: Weapon): number {
+  return base + rangeModifier + (weapon.attackModifier ?? 0);
 }
 
 const clusterTable: Record<number, readonly number[]> = {
@@ -266,6 +297,8 @@ function weaponProfile(name: string): WeaponProfile | null {
 export function parseMech(id: string, contents: string): Mech {
   const lines = contents.split(/\r?\n/);
   const name = lines.find((line) => line.trim())?.trim() || id;
+  const techLine = lines.find((line) => /^\s*Technology Base:/i.test(line))?.split(":").slice(1).join(":").trim().toLowerCase();
+  const defaultTech: TechBase | null = techLine?.startsWith("inner sphere") ? "Inner Sphere" : techLine?.startsWith("clan") ? "Clan" : null;
   const heatSinkLine = lines.find((line) => /^\s*(?:Double\s+)?Heat Sink\b/i.test(line));
   const heatSink = heatSinkLine?.match(/^\s*(Double\s+)?Heat Sink\s+(\d+)(?:\s+\[(\d+)\])?/i);
   if (!heatSink) {
@@ -288,7 +321,10 @@ export function parseMech(id: string, contents: string): Mech {
       const heat = row[4] === "-" ? 0 : Number(row[4]);
       if (/heat sink|ammo|ecm suite|c3 computer|targeting computer|\bjump jets?\b/i.test(weaponName)) return;
 
-      const profile = weaponProfile(weaponName);
+      const prefixed = weaponName.match(/^(Clan|IS|Inner Sphere)\s+(.+)$/i);
+      const weaponTech: TechBase | null = prefixed ? (prefixed[1].toLowerCase() === "clan" ? "Clan" : "Inner Sphere") : defaultTech;
+      const lookupName = prefixed ? prefixed[2] : weaponName;
+      const definition = weaponTech ? weaponDefinition(lookupName, weaponTech) : undefined;
       for (let index = 0; index < quantity; index += 1) {
         const suffix = quantity > 1 ? ` #${index + 1}` : "";
         weapons.push({
@@ -296,13 +332,19 @@ export function parseMech(id: string, contents: string): Mech {
           name: `${weaponName}${suffix}`,
           location,
           heat,
-          profile,
-          ranges: weaponDefinition(weaponName)?.ranges ?? null
+          profile: definition?.profile ?? null,
+          ranges: definition && !definition.artillery ? definition.ranges : null,
+          techBase: weaponTech,
+          attackModifier: definition?.modifier ?? 0,
+          unavailableReason: !weaponTech ? "Weapon technology is ambiguous or unspecified"
+            : definition && !definition.profile ? "Special firing rules not supported"
+              : !definition ? "Weapon data unavailable" : undefined
         });
       }
     });
   }
-  return { id, name, heatSinkCapacity, weapons };
+  const chassis = name.match(/^(.+?)\s+[A-Z0-9]+-[A-Z0-9]+$/i)?.[1] ?? name;
+  return { id, name, chassis, heatSinkCapacity, weapons };
 }
 
 export function parseMtf(id: string, contents: string): Mech {
@@ -316,11 +358,11 @@ export function parseMtf(id: string, contents: string): Mech {
     ? lines.slice(versionIndex + 1).filter((line) => line.trim() && !line.trim().startsWith("#")).slice(0, 2).map((line) => line.trim())
     : [];
   const chassis = field("chassis") || legacyName[0];
-  const model = field("model") || legacyName[1];
-  if (!chassis || !model || chassis.includes(":") || model.includes(":")) {
+  const model = field("model") ?? legacyName[1];
+  if (!chassis || model === undefined || chassis.includes(":") || model.includes(":")) {
     throw new Error(`Could not determine chassis and model for '${id}'.`);
   }
-  const name = `${chassis} ${model}`;
+  const name = [chassis, model].filter(Boolean).join(" ");
   const sinks = field("heat sinks")?.match(/^(\d+)\s+(?:(?:IS|Clan)\s+)?(Single|Double)$/i);
   if (!sinks) throw new Error(`Could not determine heat-sink capacity for '${name}'.`);
   const heatSinkCapacity = Number(sinks[1]) * (sinks[2].toLowerCase() === "double" ? 2 : 1);
@@ -329,9 +371,34 @@ export function parseMtf(id: string, contents: string): Mech {
   if (!header) throw new Error(`Could not determine weapon count for '${name}'.`);
 
   const techBase = field("techbase")?.toLowerCase();
-  const useInnerSphereDefinitions = techBase === "inner sphere";
-  const weapons: Weapon[] = [];
+  const defaultTech: TechBase | null = techBase === "inner sphere" ? "Inner Sphere" : techBase === "clan" ? "Clan" : null;
+  const mixed = techBase?.startsWith("mixed") ?? false;
   const count = Number(header[1]);
+  const slots = new Map<string, Set<TechBase>>();
+  if (mixed) {
+    let location = "";
+    for (const line of lines.slice(weaponsIndex + 1 + count)) {
+      const heading = line.trim().match(/^(Head|Center Torso|Left Torso|Right Torso|Left Arm|Right Arm|Left Leg|Right Leg):$/i);
+      if (heading) { location = heading[1].toLowerCase(); continue; }
+      const slot = line.trim().replace(/\s+\([^)]*\)\s*$/, "").replace(/[^a-z0-9]/gi, "").toLowerCase();
+      if (!location) continue;
+      for (const [key, definition] of weaponDefinitions) {
+        const separator = key.indexOf(":");
+        const canonical = key.slice(separator + 1).replace(/[^a-z0-9]/g, "");
+        if (canonical === slot) {
+          const slotKey = `${location}:${key.slice(separator + 1)}`;
+          slots.set(slotKey, new Set<TechBase>(["Clan", "Inner Sphere"]));
+        }
+        if (definition.internal.toLowerCase().replace(/[^a-z0-9]/g, "") !== slot) continue;
+        const tech: TechBase = key.slice(0, separator) === "Clan" ? "Clan" : "Inner Sphere";
+        const slotKey = `${location}:${key.slice(separator + 1)}`;
+        const found = slots.get(slotKey) ?? new Set<TechBase>();
+        found.add(tech);
+        slots.set(slotKey, found);
+      }
+    }
+  }
+  const weapons: Weapon[] = [];
   for (let index = 0; index < count; index += 1) {
     const line = lines[weaponsIndex + 1 + index];
     const parts = line?.split(",").map((part) => part.trim());
@@ -343,7 +410,6 @@ export function parseMtf(id: string, contents: string): Mech {
     const quantity = Number(match[1] ?? 1);
     if (quantity < 1) throw new Error(`Invalid weapon quantity in '${name}'.`);
     const weaponName = match[2].replace(/\s+/g, " ");
-    const definition = useInnerSphereDefinitions ? weaponDefinition(weaponName) : undefined;
     const rear = /\(R\)\s*$/i.test(parts[0]) || /\(R\)\s*$/i.test(parts[1]);
     const locationNames: Record<string, string> = {
       "head": "HD", "center torso": "CT", "left torso": "LT", "right torso": "RT",
@@ -351,22 +417,50 @@ export function parseMtf(id: string, contents: string): Mech {
     };
     const rawLocation = parts[1].replace(/\s*\(R\)\s*$/i, "").trim();
     const location = `${locationNames[rawLocation.toLowerCase()] ?? rawLocation}${rear ? " (R)" : ""}`;
+    const prefixed = weaponName.match(/^(Clan|IS|Inner Sphere)\s+(.+)$/i);
+    const explicitTech: TechBase | null = prefixed ? (prefixed[1].toLowerCase() === "clan" ? "Clan" : "Inner Sphere") : null;
+    const lookupName = prefixed ? prefixed[2] : weaponName;
+    const candidates = slots.get(`${rawLocation.toLowerCase()}:${lookupName.toLowerCase()}`);
+    const inferredTech = mixed && candidates?.size === 1 ? Array.from(candidates)[0] : null;
+    const weaponTech = explicitTech ?? (mixed ? inferredTech : defaultTech);
+    const definition = weaponTech ? weaponDefinition(lookupName, weaponTech) : undefined;
     for (let item = 0; item < quantity; item += 1) {
       weapons.push({
         id: `${id}-${index}-${item}`,
         name: `${weaponName}${quantity > 1 ? ` #${item + 1}` : ""}`,
         location,
         heat: definition?.heat ?? null,
-        profile: useInnerSphereDefinitions ? weaponProfile(weaponName) : null,
-        ranges: definition?.ranges ?? null
+        profile: definition?.profile ?? null,
+        ranges: definition && !definition.artillery ? definition.ranges : null,
+        techBase: weaponTech,
+        attackModifier: definition?.modifier ?? 0,
+        unavailableReason: !weaponTech ? "Weapon technology is ambiguous or unspecified"
+          : definition && !definition.profile ? "Special firing rules not supported"
+            : !definition ? "Weapon data unavailable" : undefined
       });
     }
   }
-  return { id, name, heatSinkCapacity, weapons };
+  return { id, name, chassis, heatSinkCapacity, weapons };
 }
 
 export function parseMechs(files: Record<string, string>): Mech[] {
   return Object.entries(files)
     .map(([path, contents]) => /\.mtf$/i.test(path) ? parseMtf(path, contents) : parseMech(path, contents))
     .sort((left, right) => left.name.localeCompare(right.name));
+}
+
+export function parseAvailableMechs(files: Record<string, string>): { mechs: Mech[]; errors: { path: string; message: string }[] } {
+  const mechs: Mech[] = [];
+  const errors: { path: string; message: string }[] = [];
+  for (const [path, contents] of Object.entries(files)) {
+    try {
+      mechs.push(...parseMechs({ [path]: contents }));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`Could not load mech ${path}:`, error);
+      errors.push({ path, message });
+    }
+  }
+  mechs.sort((left, right) => left.name.localeCompare(right.name));
+  return { mechs, errors };
 }

@@ -1,16 +1,17 @@
 import "./style.css";
-import { getWeaponRange, parseMechs, resolveAttack, summarizeDamageByLocation, type AttackResult, type Facing, type Mech, type Weapon } from "./game";
+import { getWeaponRange, parseAvailableMechs, resolveAttack, summarizeDamageByLocation, weaponTargetNumber, type AttackResult, type Facing, type Mech, type Weapon } from "./game";
 import { RollHistory } from "./roll-history";
+import { setupBattles } from "./battle-ui";
 
 const mechFiles = import.meta.glob(["../mechs/**/*.txt", "../mechs/**/*.mtf"], { eager: true, query: "?raw", import: "default" }) as Record<string, string>;
-const mechs = parseMechs(mechFiles);
+const { mechs, errors: mechErrors } = parseAvailableMechs(mechFiles);
 const app = document.querySelector<HTMLDivElement>("#app");
 const mobileBreakpoint = window.matchMedia("(max-width: 768px)");
 const mobileUserAgent = /Android|iPhone|iPad|iPod|Mobile|Windows Phone/i.test(navigator.userAgent);
 
 if (!app) throw new Error("The application root element is missing.");
 
-let activeMech: Mech | undefined = mechs[0];
+let activeMech: Mech | undefined;
 let selectedWeapons = shortRangeWeapons(activeMech, 6);
 let results: AttackResult[] = [];
 let resultsFacing: Facing = "Front";
@@ -24,13 +25,12 @@ app.innerHTML = `
       <h1>Box of Doom</h1>
       <p class="intro">Pick a 'Mech, set your GATOR modifiers, and resolve your volley.</p>
     </header>
-    ${mechs.length === 0 ? `<p class="notice error">No .txt or .mtf 'Mech files were found in the mechs folder.</p>` : `
+    ${mechErrors.length ? `<details class="panel error"><summary>${mechErrors.length} bundled mech design(s) could not be loaded</summary><ul>${mechErrors.map(({ path, message }) => `<li>${escapeHtml(path)}: ${escapeHtml(message)}</li>`).join("")}</ul></details>` : ""}
+    <section id="battle-controls" class="panel" aria-label="Battle"></section>
+    <div id="attack-screen" hidden>
       <section class="panel" aria-labelledby="attacker-title">
         <h2 id="attacker-title">Attacker</h2>
-        <label class="field">
-          <span>'Mech</span>
-          <select id="mech-select">${mechs.map((mech, index) => `<option value="${escapeHtml(mech.id)}"${index === 0 ? " selected" : ""}>${escapeHtml(mech.name)}${mechs.some((other) => other !== mech && other.name === mech.name) ? ` (${escapeHtml(mech.id.replace(/^\.\.\/mechs\//, ""))})` : ""}</option>`).join("")}</select>
-        </label>
+        <p id="attacker-name" class="notice"></p>
         <label class="field range-field">
           <span>Range to target</span>
           <input id="range-to-target" type="number" min="0" max="25" step="1" value="6" inputmode="numeric" aria-describedby="range-help" />
@@ -90,7 +90,9 @@ app.innerHTML = `
           <dl id="location-damage-list" class="location-damage-list"></dl>
         </section>
       </section>
-    `}
+    </div>
+    <dialog id="battle-dialog" class="battle-dialog" aria-label="Choose a Battle"></dialog>
+    <dialog id="roster-dialog" class="battle-dialog" aria-label="Manage Battle"></dialog>
     <footer>
       <span>Rolls use your browser's cryptographically secure random number generator.</span>
       <button id="open-diagnostics" class="gear-button" type="button" aria-label="Open dice roll diagnostics" title="Dice roll diagnostics">&#9881;</button>
@@ -143,8 +145,7 @@ getElement<HTMLButtonElement>("reset-rolls").addEventListener("click", () => {
   renderRollChart();
 });
 
-if (mechs.length > 0) {
-  const mechSelect = getElement<HTMLSelectElement>("mech-select");
+{
   const gunnery = getElement<HTMLSelectElement>("gunnery");
   const movement = getElement<HTMLSelectElement>("movement");
   const targetMovement = getElement<HTMLSelectElement>("target-movement");
@@ -231,14 +232,25 @@ if (mechs.length > 0) {
     renderResults(results);
   });
 
-  mechSelect.addEventListener("change", () => {
-    activeMech = mechs.find((mech) => mech.id === mechSelect.value);
-    const distance = targetRange();
-    selectedWeapons = distance === null ? new Set() : shortRangeWeapons(activeMech, distance);
+  setupBattles(mechs, (mech) => {
+    activeMech = mech;
+    getElement("attack-screen").hidden = !mech;
+    getElement("attacker-name").textContent = mech?.name ?? "";
+    range.value = "6";
+    range.setCustomValidity("");
+    getElement("range-help").textContent = "Enter 0 to 25 hexes. Changing range selects short-range weapons.";
+    gunnery.value = "4";
+    movement.value = "2";
+    targetMovement.value = "2";
+    other.value = "0";
+    facing.value = "Front";
+    selectedWeapons = shortRangeWeapons(activeMech, 6);
     results = [];
+    resultsFacing = "Front";
     statusMessage = "";
     renderWeapons();
     updateHeatGenerated();
+    updateTargetNumber();
     renderStatus();
     renderResults(results);
   });
@@ -293,7 +305,7 @@ if (mechs.length > 0) {
       if (!weapon.ranges) throw new Error(`Missing range data for ${weapon.name}.`);
       const modifier = getWeaponRange(weapon.ranges, distance).modifier;
       if (modifier === null) throw new Error(`${weapon.name} is out of range.`);
-      return resolveAttack(weapon, targetNumber + modifier, resultsFacing, undefined, (total) => history.record(total));
+      return resolveAttack(weapon, weaponTargetNumber(targetNumber, modifier, weapon), resultsFacing, undefined, (total) => history.record(total));
     });
     statusMessage = "";
     renderStatus();
@@ -319,7 +331,7 @@ function weaponRow(weapon: Weapon, checked: boolean, distance: number | null): s
       : weapon.profile.kind === "cluster"
         ? `${weapon.profile.rackSize}-missile rack`
         : "No direct damage"
-    : "Unsupported weapon";
+    : weapon.unavailableReason ?? "Unsupported weapon";
   const range = weapon.ranges && distance !== null ? getWeaponRange(weapon.ranges, distance) : null;
   const rangeText = !weapon.ranges ? "Range data unavailable"
     : !range ? "Enter a valid range"
@@ -329,7 +341,7 @@ function weaponRow(weapon: Weapon, checked: boolean, distance: number | null): s
     <label class="weapon-row${weapon.profile ? "" : " unsupported"}">
       <input type="checkbox" data-weapon-id="${escapeHtml(weapon.id)}"${checked ? " checked" : ""}${disabled ? " disabled" : ""} />
       <span class="weapon-name">${escapeHtml(weapon.name)} <span class="weapon-location">${escapeHtml(weapon.location)}</span></span>
-      <span class="weapon-detail">${details} · ${rangeText}</span>
+      <span class="weapon-detail">${weapon.techBase ?? "Unknown tech"} · ${details}${weapon.attackModifier ? ` · hit ${weapon.attackModifier > 0 ? "+" : ""}${weapon.attackModifier}` : ""} · ${rangeText}</span>
     </label>
   `;
 }

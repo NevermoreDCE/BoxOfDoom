@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { getClusterHits, getWeaponRange, parseMech, parseMechs, parseMtf, resolveAttack, summarizeDamageByLocation, type Weapon } from "./game";
+import { getClusterHits, getWeaponRange, parseAvailableMechs, parseMech, parseMechs, parseMtf, resolveAttack, summarizeDamageByLocation, weaponTargetNumber, type Weapon } from "./game";
 import annihilatorExport from "../mechs/Annihilator ANH-1A.txt?raw";
 
 const gladiatorExport = `Gladiator GLD-3RX
+Technology Base: Inner Sphere (Standard)
 Double Heat Sink 13 [26]
 Weapons
 and Ammo              Location  Critical   Heat    Tonnage
@@ -13,10 +14,26 @@ TAG                      HD        1        0       1.0
 `;
 
 describe("mech equipment parsing", () => {
+  it("loads every bundled design, including MTF files with an empty model field", () => {
+    const files = import.meta.glob(["../mechs/**/*.txt", "../mechs/**/*.mtf"], { eager: true, query: "?raw", import: "default" }) as Record<string, string>;
+    const mechs = parseMechs(files);
+    expect(mechs).toHaveLength(Object.keys(files).length);
+    expect(mechs.some((mech) => mech.name === "Galahad")).toBe(true);
+  });
+
+  it("reports a broken design without hiding other bundled designs", () => {
+    const result = parseAvailableMechs({ "bad.mtf": "chassis:Bad", "good.txt": annihilatorExport });
+    expect(result.mechs.map((mech) => mech.name)).toEqual(["Annihilator ANH-1A"]);
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]).toMatchObject({ path: "bad.mtf" });
+    expect(result.errors[0].message).toContain("chassis and model");
+  });
+
   it("reads every weapon from the supplied 'Mech exports", () => {
     const annihilator = parseMech("annihilator", annihilatorExport);
     const gladiator = parseMech("gladiator", gladiatorExport);
 
+    expect(annihilator.chassis).toBe("Annihilator");
     expect(annihilator.heatSinkCapacity).toBe(18);
     expect(gladiator.heatSinkCapacity).toBe(26);
     expect(annihilator.weapons).toHaveLength(8);
@@ -32,6 +49,7 @@ describe("mech equipment parsing", () => {
 
   it("expands weapon quantities, recognizes supported equipment, and ignores non-weapons", () => {
     const mech = parseMech("test", `Test Mech
+Technology Base: Inner Sphere (Standard)
 Heat Sink 10
 Weapons
 and Ammo              Location  Critical   Heat    Tonnage
@@ -53,6 +71,7 @@ TAG                    HD        1          0       1.0
 
   it("preserves unsupported weapons so the user can see and deselect them", () => {
     const mech = parseMech("test", `Test
+Technology Base: Inner Sphere (Standard)
 Double Heat Sink 10 [18]
 Weapons
 and Ammo              Location  Critical   Heat    Tonnage
@@ -65,6 +84,7 @@ Mystery Cannon         RA        5          4       5.0
 
   it("excludes jump jets from the ANH-2L equipment table while keeping its weapons", () => {
     const mech = parseMech("anh-2l", `Annihilator ANH-2L
+Technology Base: Inner Sphere (Standard)
 Double Heat Sink 13 [26]
 Weapons
 and Ammo              Location  Critical   Heat    Tonnage
@@ -101,6 +121,7 @@ Medium Laser
 `;
     const mech = parseMtf("gladiator.mtf", mtf);
     expect(mech.name).toBe("Gladiator GLD-3RX");
+    expect(mech.chassis).toBe("Gladiator");
     expect(mech.heatSinkCapacity).toBe(26);
     expect(mech.weapons).toHaveLength(13);
     expect(new Set(mech.weapons.map((weapon) => weapon.id)).size).toBe(13);
@@ -129,17 +150,81 @@ Weapons:2
     expect(mech.weapons[2]).toMatchObject({ name: "Mystery Cannon", heat: null, profile: null, ranges: null });
   });
 
-  it("does not apply Inner Sphere definitions to Clan or unspecified technology", () => {
-    for (const techBase of ["techbase:Clan", ""]) {
-      const mech = parseMtf("clan.mtf", `chassis:Test
+  it("distinguishes Clan and Inner Sphere weapons and leaves unspecified technology unavailable", () => {
+    const make = (techBase: string) => parseMtf("test.mtf", `chassis:Test
 model:C
 ${techBase}
 heat sinks:10 Clan Double
-Weapons:1
+Weapons:2
 LRM 5, Right Torso
+ER Large Laser, Left Arm
 `);
-      expect(mech.weapons[0]).toMatchObject({ heat: null, profile: null, ranges: null });
-    }
+    const clan = make("techbase:Clan").weapons;
+    const is = make("techbase:Inner Sphere").weapons;
+    const unknown = make("").weapons;
+    expect(clan[0]).toMatchObject({ techBase: "Clan", heat: 2, ranges: { minimum: 0 }, profile: { kind: "cluster", rackSize: 5 } });
+    expect(is[0]).toMatchObject({ techBase: "Inner Sphere", heat: 2, ranges: { minimum: 6 } });
+    expect(clan[1]).toMatchObject({ heat: 12, ranges: { short: 8, long: 25 }, profile: { kind: "direct", damage: 10 } });
+    expect(is[1]).toMatchObject({ heat: 12, ranges: { short: 7, long: 19 }, profile: { kind: "direct", damage: 8 } });
+    expect(unknown[0]).toMatchObject({ heat: null, profile: null, ranges: null, techBase: null });
+  });
+
+  it("uses explicit TXT technology and leaves ambiguous mixed-tech weapons unavailable", () => {
+    const make = (tech: string, weapons: string) => parseMech("test.txt", `Test
+Technology Base: ${tech}
+Heat Sink 10
+Weapons
+and Ammo              Location  Critical   Heat    Tonnage
+${weapons}
+`);
+    const row = "LRM 5                  RT        1        2       1.0";
+    expect(make("Clan (Standard)", row).weapons[0]).toMatchObject({ techBase: "Clan", ranges: { minimum: 0 } });
+    expect(make("Inner Sphere (Standard)", row).weapons[0]).toMatchObject({ techBase: "Inner Sphere", ranges: { minimum: 6 } });
+    expect(make("Mixed", row).weapons[0]).toMatchObject({ techBase: null, profile: null });
+    expect(make("Mixed", `Clan ${row}`).weapons[0]).toMatchObject({ techBase: "Clan", ranges: { minimum: 0 } });
+  });
+
+  it("uses explicit or unambiguous per-location critical slots for mixed-tech weapons", () => {
+    const mech = parseMtf("mixed.mtf", `chassis:Test
+model:M
+techbase:Mixed (IS Chassis)
+heat sinks:10 Double
+Weapons:5
+ER Large Laser, Left Arm
+ER Large Laser, Right Arm
+LRM 5, Left Torso
+Clan LRM 5, Right Torso
+Medium Pulse Laser, Center Torso
+Left Arm:
+CLERLargeLaser
+Right Arm:
+ISERLargeLaser
+Left Torso:
+CLLRM5
+ISLRM5
+Center Torso:
+ISMediumPulseLaser
+`);
+    expect(mech.weapons[0]).toMatchObject({ techBase: "Clan", profile: { damage: 10 } });
+    expect(mech.weapons[1]).toMatchObject({ techBase: "Inner Sphere", profile: { damage: 8 } });
+    expect(mech.weapons[2]).toMatchObject({ techBase: null, profile: null, heat: null });
+    expect(mech.weapons[3]).toMatchObject({ techBase: "Clan", ranges: { minimum: 0 } });
+    expect(mech.weapons[4]).toMatchObject({ techBase: "Inner Sphere", attackModifier: -2, profile: { damage: 6 } });
+    expect(weaponTargetNumber(8, 2, mech.weapons[4])).toBe(8);
+    expect(weaponTargetNumber(8, 2, mech.weapons[0])).toBe(10);
+  });
+
+  it("supplies saved stats for all current MTF weapons without enabling special rules", () => {
+    const files = import.meta.glob("../mechs/**/*.mtf", { eager: true, query: "?raw", import: "default" }) as Record<string, string>;
+    const weapons = parseMechs(files).flatMap((mech) => mech.weapons);
+    expect(weapons.filter((weapon) => weapon.heat === null).map((weapon) => weapon.name)).toEqual([]);
+    const special = weapons.filter((weapon) => !weapon.profile);
+    expect(new Set(special.map((weapon) => weapon.name))).toEqual(new Set([
+      "Anti-Missile System", "ATM 12", "Arrow IV", "Flamer", "LB 2-X AC", "LB 5-X AC", "LB 10-X AC",
+      "LB 20-X AC", "Narc", "Streak SRM 2", "Streak SRM 4", "Streak SRM 6",
+      "Ultra AC/2", "Ultra AC/5", "Ultra AC/10", "Ultra AC/20"
+    ]));
+    expect(special.every((weapon) => weapon.unavailableReason === "Special firing rules not supported")).toBe(true);
   });
 
   it("rejects incomplete or malformed MTF data instead of silently omitting weapons", () => {

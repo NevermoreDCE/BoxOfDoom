@@ -18,7 +18,7 @@ must be mobile-friendly, very easy to use with touch-based inputs
 # data source
 read MegaMek `.txt` export and `.mtf` files from the "mechs" folder and its subfolders
 
-MTF weapon heat and ranges use bundled Inner Sphere definitions. Unsupported weapons and weapons from other or unspecified tech bases remain visible but cannot be selected.
+Weapon ranges and MTF weapon heat use bundled Inner Sphere and Clan definitions. Mixed-tech weapons use an explicit per-weapon tech base or, in MTF files, an unambiguous matching critical slot; ambiguous or unspecified technology remains unavailable rather than guessing. Weapons with special firing rules not yet implemented remain visible but cannot be selected.
 
 should be able to read in the equipment for a mech
 
@@ -226,3 +226,12 @@ clients can only see mech damage records on mechs that are not their team as "co
 
 ## 9. Battle export and import
 Allow users to export Battles and import them in another browser, profile, or device. Define the file format and behavior for importing a Battle that already exists when this idea is implemented.
+
+## 10. Additional weapon firing rules
+Support firing rules not currently handled by the attack roller for weapons in bundled mech designs. The initial inventory includes anti-missile systems, Arrow IV artillery, ATM launchers, flamers, Narc, Streak SRMs, Ultra autocannons, and LB-X autocannons. Identify and include any other bundled weapons whose special rules or attack modes are not yet supported.
+
+- Define the appropriate attack modes and user inputs, including ammunition choices where they affect range, damage, or special effects.
+- Implement the applicable hit modifiers, cluster behavior, damage grouping, and non-damage effects without guessing or treating defensive equipment as an ordinary attack.
+- Account for Clan, Inner Sphere, and mixed-tech equipment on a per-weapon basis.
+- Keep modes or weapons unavailable until their required rules are supported; clearly explain why they cannot be fired.
+- Add tests for each supported mode and its relevant edge cases.
