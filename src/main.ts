@@ -12,7 +12,9 @@ const mobileUserAgent = /Android|iPhone|iPad|iPod|Mobile|Windows Phone/i.test(na
 if (!app) throw new Error("The application root element is missing.");
 
 let activeMech: Mech | undefined;
-let selectedWeapons = shortRangeWeapons(activeMech, 6);
+let disabledWeapons = new Set<string>();
+let saveDisabledWeapons: (keys: string[]) => boolean = () => false;
+let selectedWeapons = shortRangeWeapons(activeMech, 6, disabledWeapons);
 let results: AttackResult[] = [];
 let resultsFacing: Facing = "Front";
 let statusMessage = "";
@@ -183,13 +185,17 @@ getElement<HTMLButtonElement>("reset-rolls").addEventListener("click", () => {
     }
     list.innerHTML = `
       <div class="list-heading"><h3>Weapons</h3><span>${activeMech.weapons.length} listed</span></div>
-      ${activeMech.weapons.map((weapon) => weaponRow(weapon, selectedWeapons.has(weapon.id), targetRange())).join("")}
+      <p id="weapon-actions-help" class="field-hint">Press and hold a weapon row to disable or enable it. On a keyboard, focus the row and press D.</p>
+      ${activeMech.weapons.map((weapon) => weaponRow(weapon, selectedWeapons.has(weapon.id), targetRange(), disabledWeapons.has(weaponKey(weapon)))).join("")}
+      ${Array.from(disabledWeapons).some((key) => !activeMech?.weapons.some((weapon) => weaponKey(weapon) === key))
+        ? `<p class="battle-error" role="alert">Some disabled weapons no longer match this mech's design. Their saved state is preserved.</p>` : ""}
     `;
     list.querySelectorAll<HTMLInputElement>("input[data-weapon-id]").forEach((checkbox) => {
       checkbox.addEventListener("change", () => {
         const id = checkbox.dataset.weaponId;
         if (!id) return;
-        if (checkbox.checked) selectedWeapons.add(id);
+        const weapon = activeMech?.weapons.find((item) => item.id === id);
+        if (checkbox.checked && weapon && !disabledWeapons.has(weaponKey(weapon))) selectedWeapons.add(id);
         else selectedWeapons.delete(id);
         updateHeatGenerated();
         statusMessage = "";
@@ -197,6 +203,85 @@ getElement<HTMLButtonElement>("reset-rolls").addEventListener("click", () => {
       });
     });
   };
+
+  const toggleWeapon = (id: string): void => {
+    const weapon = activeMech?.weapons.find((item) => item.id === id);
+    if (!weapon) return;
+    const key = weaponKey(weapon);
+    const enabling = disabledWeapons.has(key);
+    if (!window.confirm(`${enabling ? "Enable" : "Disable"} ${weapon.name} (${weapon.location})?`)) return;
+    const next = new Set(disabledWeapons);
+    if (enabling) next.delete(key);
+    else next.add(key);
+    if (!saveDisabledWeapons(Array.from(next))) return;
+    disabledWeapons = next;
+    selectedWeapons.delete(weapon.id);
+    statusMessage = "";
+    renderWeapons();
+    updateHeatGenerated();
+    renderStatus();
+  };
+
+  const weaponList = getElement("weapon-list");
+  let hold: { id: string; pointer: number; x: number; y: number; timer: number } | null = null;
+  let suppressClickUntil = 0;
+  const cancelHold = (): void => {
+    if (hold) window.clearTimeout(hold.timer);
+    hold = null;
+  };
+  weaponList.addEventListener("pointerdown", (event) => {
+    if (!event.isPrimary || event.button !== 0 || !(event.target instanceof Element)) return;
+    const row = event.target.closest<HTMLElement>("[data-weapon-row]");
+    const id = row?.dataset.weaponRow;
+    if (!id) return;
+    cancelHold();
+    suppressClickUntil = 0;
+    const timer = window.setTimeout(() => {
+      hold = null;
+      suppressClickUntil = performance.now() + 2000;
+      toggleWeapon(id);
+    }, 600);
+    hold = { id, pointer: event.pointerId, x: event.clientX, y: event.clientY, timer };
+  });
+  window.addEventListener("pointermove", (event) => {
+    if (hold?.pointer === event.pointerId && Math.hypot(event.clientX - hold.x, event.clientY - hold.y) > 10) cancelHold();
+  });
+  window.addEventListener("pointerup", (event) => {
+    if (hold?.pointer === event.pointerId) cancelHold();
+  });
+  window.addEventListener("pointercancel", (event) => {
+    if (hold?.pointer === event.pointerId) cancelHold();
+  });
+  window.addEventListener("blur", cancelHold);
+  weaponList.addEventListener("contextmenu", (event) => {
+    if (hold || performance.now() < suppressClickUntil) event.preventDefault();
+  });
+  weaponList.addEventListener("click", (event) => {
+    if (event.detail > 0 && performance.now() < suppressClickUntil) {
+      event.preventDefault();
+      event.stopPropagation();
+      suppressClickUntil = 0;
+    }
+  }, true);
+  weaponList.addEventListener("dblclick", (event) => {
+    if (!(event.target instanceof Element)) return;
+    const row = event.target.closest<HTMLElement>("[data-weapon-row]");
+    if (row?.dataset.weaponRow) {
+      event.preventDefault();
+      toggleWeapon(row.dataset.weaponRow);
+    }
+  });
+  weaponList.addEventListener("keydown", (event) => {
+    if (event.key.toLowerCase() !== "d" || event.repeat || !(event.target instanceof Element)) return;
+    const row = event.target.closest<HTMLElement>("[data-weapon-row]");
+    const id = row?.dataset.weaponRow;
+    if (!id) return;
+    event.preventDefault();
+    toggleWeapon(id);
+    weaponList.querySelectorAll<HTMLElement>("[data-weapon-row]").forEach((item) => {
+      if (item.dataset.weaponRow === id) item.focus();
+    });
+  });
 
   const renderStatus = (): void => {
     getElement("status").textContent = statusMessage;
@@ -232,8 +317,10 @@ getElement<HTMLButtonElement>("reset-rolls").addEventListener("click", () => {
     renderResults(results);
   });
 
-  setupBattles(mechs, (mech) => {
+  setupBattles(mechs, (mech, savedDisabled, saveDisabled) => {
     activeMech = mech;
+    disabledWeapons = new Set(savedDisabled);
+    saveDisabledWeapons = saveDisabled;
     getElement("attack-screen").hidden = !mech;
     getElement("attacker-name").textContent = mech?.name ?? "";
     range.value = "6";
@@ -244,7 +331,7 @@ getElement<HTMLButtonElement>("reset-rolls").addEventListener("click", () => {
     targetMovement.value = "2";
     other.value = "0";
     facing.value = "Front";
-    selectedWeapons = shortRangeWeapons(activeMech, 6);
+    selectedWeapons = shortRangeWeapons(activeMech, 6, disabledWeapons);
     results = [];
     resultsFacing = "Front";
     statusMessage = "";
@@ -257,7 +344,7 @@ getElement<HTMLButtonElement>("reset-rolls").addEventListener("click", () => {
 
   range.addEventListener("input", () => {
     const distance = targetRange();
-    if (distance !== null) selectedWeapons = shortRangeWeapons(activeMech, distance);
+    if (distance !== null) selectedWeapons = shortRangeWeapons(activeMech, distance, disabledWeapons);
     range.setCustomValidity(distance === null ? "Enter a whole number from 0 to 25." : "");
     getElement("range-help").textContent = distance === null
       ? "Enter a whole number from 0 to 25 hexes."
@@ -281,7 +368,7 @@ getElement<HTMLButtonElement>("reset-rolls").addEventListener("click", () => {
       renderStatus();
       return;
     }
-    const selected = activeMech?.weapons.filter((weapon) => selectedWeapons.has(weapon.id)) ?? [];
+    const selected = activeMech?.weapons.filter((weapon) => selectedWeapons.has(weapon.id) && !disabledWeapons.has(weaponKey(weapon))) ?? [];
     if (selected.length === 0) {
       statusMessage = "Select at least one weapon to fire.";
       renderStatus();
@@ -318,13 +405,17 @@ getElement<HTMLButtonElement>("reset-rolls").addEventListener("click", () => {
   updateTargetNumber();
 }
 
-function shortRangeWeapons(mech: Mech | undefined, distance: number): Set<string> {
+function weaponKey(weapon: Weapon): string {
+  return JSON.stringify([weapon.id, weapon.name, weapon.location, weapon.techBase ?? null]);
+}
+
+function shortRangeWeapons(mech: Mech | undefined, distance: number, disabled: Set<string>): Set<string> {
   return new Set(mech?.weapons
-    .filter((weapon) => weapon.profile && weapon.ranges && getWeaponRange(weapon.ranges, distance).band === "Short")
+    .filter((weapon) => !disabled.has(weaponKey(weapon)) && weapon.profile && weapon.ranges && getWeaponRange(weapon.ranges, distance).band === "Short")
     .map((weapon) => weapon.id) ?? []);
 }
 
-function weaponRow(weapon: Weapon, checked: boolean, distance: number | null): string {
+function weaponRow(weapon: Weapon, checked: boolean, distance: number | null, disabledByUser: boolean): string {
   const details = weapon.profile
     ? weapon.profile.kind === "direct"
       ? `${weapon.profile.damage} damage`
@@ -336,13 +427,15 @@ function weaponRow(weapon: Weapon, checked: boolean, distance: number | null): s
   const rangeText = !weapon.ranges ? "Range data unavailable"
     : !range ? "Enter a valid range"
       : range.modifier === null ? range.band : `${range.band} (+${range.modifier})`;
-  const disabled = !weapon.profile || !range || range.modifier === null;
+  const disabled = disabledByUser || !weapon.profile || !range || range.modifier === null;
   return `
-    <label class="weapon-row${weapon.profile ? "" : " unsupported"}">
-      <input type="checkbox" data-weapon-id="${escapeHtml(weapon.id)}"${checked ? " checked" : ""}${disabled ? " disabled" : ""} />
-      <span class="weapon-name">${escapeHtml(weapon.name)} <span class="weapon-location">${escapeHtml(weapon.location)}</span></span>
-      <span class="weapon-detail">${weapon.techBase ?? "Unknown tech"} · ${details}${weapon.attackModifier ? ` · hit ${weapon.attackModifier > 0 ? "+" : ""}${weapon.attackModifier}` : ""} · ${rangeText}</span>
-    </label>
+    <div class="weapon-row${weapon.profile ? "" : " unsupported"}${disabledByUser ? " weapon-disabled" : ""}" data-weapon-row="${escapeHtml(weapon.id)}" tabindex="0" role="group" aria-label="${escapeHtml(weapon.name)} ${escapeHtml(weapon.location)}${disabledByUser ? ", disabled" : ""}" aria-describedby="weapon-actions-help">
+      <label class="weapon-selection">
+        <input type="checkbox" data-weapon-id="${escapeHtml(weapon.id)}"${checked && !disabled ? " checked" : ""}${disabled ? " disabled" : ""} />
+        <span class="weapon-name">${escapeHtml(weapon.name)} <span class="weapon-location">${escapeHtml(weapon.location)}</span>${disabledByUser ? ' <span class="weapon-disabled-label">Disabled</span>' : ""}</span>
+        <span class="weapon-detail">${weapon.techBase ?? "Unknown tech"} · ${escapeHtml(details)}${weapon.attackModifier ? ` · hit ${weapon.attackModifier > 0 ? "+" : ""}${weapon.attackModifier}` : ""} · ${rangeText}</span>
+      </label>
+    </div>
   `;
 }
 

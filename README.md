@@ -9,6 +9,8 @@ Create a Battle with an initial team, then use **Manage Battle and roster** to a
 
 Battles are saved automatically in local browser storage and the last open Battle is restored on return. Storage is specific to the browser and profile and can be cleared by the browser or user; it is not synchronized or backed up. Attack settings and volley results are not saved, and switching 'Mechs resets them. Damage tracking is not implemented yet.
 
+Disable or re-enable a weapon by pressing and holding anywhere on its row, or by focusing the row and pressing D. A desktop double-click also works. Confirm the change when prompted. Disabled weapons are saved per 'Mech instance and excluded from selection, weapon heat, and firing. Re-enabled weapons are not automatically selected until the range changes.
+
 Team colors use a 16-color palette selected for distinguishability under simulated color-vision deficiencies, but no palette can guarantee every color is distinct for every user. Team names are always displayed alongside colors. If a bundled design is removed or cannot be parsed, its saved roster entry is preserved and marked unavailable. Save failures and changes from another tab are reported; reload before editing after another tab changes Battles.
 
 ## Run locally

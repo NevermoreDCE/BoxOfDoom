@@ -11,7 +11,10 @@ function id(): string {
   return crypto.randomUUID();
 }
 
-export function setupBattles(mechs: Mech[], onSelect: (mech: Mech | undefined) => void): void {
+export function setupBattles(
+  mechs: Mech[],
+  onSelect: (mech: Mech | undefined, disabledWeapons: string[], saveDisabled: (keys: string[]) => boolean) => void
+): void {
   const controls = document.querySelector<HTMLElement>("#battle-controls");
   const picker = document.querySelector<HTMLDialogElement>("#battle-dialog");
   const manager = document.querySelector<HTMLDialogElement>("#roster-dialog");
@@ -23,7 +26,7 @@ export function setupBattles(mechs: Mech[], onSelect: (mech: Mech | undefined) =
   } catch (error) {
     console.error("Could not load Battles:", error);
     controls.innerHTML = `<p class="error" role="alert">Battles could not be loaded. Check browser storage and reload. Saved data has not been changed.</p>`;
-    onSelect(undefined);
+    onSelect(undefined, [], () => false);
     return;
   }
 
@@ -52,6 +55,7 @@ export function setupBattles(mechs: Mech[], onSelect: (mech: Mech | undefined) =
     try {
       store.update(change);
       errorMessage = "";
+      showError();
       return true;
     } catch (error) {
       console.error("Could not save Battle:", error);
@@ -68,7 +72,13 @@ export function setupBattles(mechs: Mech[], onSelect: (mech: Mech | undefined) =
     if (!all.some((mech) => mech.id === selectedId)) selectedId = all[0]?.id ?? "";
     if (force || previous !== selectedId) {
       const instance = all.find((mech) => mech.id === selectedId);
-      onSelect(mechs.find((mech) => mech.id === instance?.sourceMechId));
+      const instanceId = instance?.id;
+      onSelect(mechs.find((mech) => mech.id === instance?.sourceMechId), instance?.disabledWeapons ?? [], (keys) =>
+        save((data) => {
+          const current = findBattle(data).teams.flatMap((team) => team.mechs).find((mech) => mech.id === instanceId);
+          if (!current || selectedId !== instanceId) throw new Error("The selected mech is no longer available.");
+          current.disabledWeapons = keys;
+        }));
     }
   };
 

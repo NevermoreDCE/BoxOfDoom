@@ -10,6 +10,7 @@ export type BattleMech = {
   sourceMechId: string;
   name: string;
   damage: null;
+  disabledWeapons?: string[];
 };
 
 export type Team = { id: string; name: string; color: string; mechs: BattleMech[] };
@@ -57,6 +58,11 @@ export function validateBattleData(value: unknown): asserts value is BattleData 
       for (const mech of team.mechs) {
         if (!isObject(mech) || !nonempty(mech.sourceMechId) || !nonempty(mech.name) || mech.damage !== null) {
           throw new Error("Invalid saved mech.");
+        }
+        if (mech.disabledWeapons !== undefined &&
+            (!Array.isArray(mech.disabledWeapons) || !mech.disabledWeapons.every(nonempty) ||
+              new Set(mech.disabledWeapons).size !== mech.disabledWeapons.length)) {
+          throw new Error("Invalid disabled weapon data.");
         }
         uniqueId(mech.id);
       }

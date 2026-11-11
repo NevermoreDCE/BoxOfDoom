@@ -195,11 +195,16 @@ ability to pick custom mechs from /mechs/ folder, or to open a stock mech from t
 - Account for bundled mech definitions changing or disappearing in a later app version without silently losing a saved roster.
 
 ## 3. disable weapons
-long-tapping a weapon (or double-clicking on desktop) should give the option (with confirmation dialog) to disable a weapon: if disabled it cannot be selected for firing and is ignored by the app. same action can re-enable it later if desired.
+Pressing and holding anywhere on a weapon row (or double-clicking on desktop) should give the option, with a confirmation dialog, to disable or re-enable a weapon. A disabled weapon cannot be selected for firing and is ignored by the app.
+- Save disabled weapons per 'Mech instance in the Battle, including across reloads and Battle or 'Mech switches. Do not retain ordinary attack selections.
+- Disabled weapons are excluded from default selection, heat, and firing. Re-enabled weapons must be selected manually or by a subsequent range reset, and remain unavailable if their range or firing rules do not permit selection.
+- Allow keyboard users to focus a weapon row and press D to disable or re-enable it; do not add a separate action button. Preserve and report saved disabled entries that no longer match the bundled design.
 
 ## 4. Damage Tracking
-screen for tracking damage to mech
+separate screen for tracking damage to mech
+pick a mech from the current battle
 shows all damage locations, total and current armor & internals, tap location and enter a number to apply damage to that location
+if a publicly licensed free-to-use image is available, prefer to use an image of the mech layout similar to what is seen on normal printed rosters (make each section of the mech 'tapable/clickable' and display numeric armor/internals); if no publicly-licensed image is available then just use a list of buttons in the order of the hit chart.
 
 ## 5. Apply Damage button & picker
 requires "battles" to be implemented, requires "Damage tracking" to be implemented

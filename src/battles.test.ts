@@ -69,6 +69,33 @@ describe("Battle storage", () => {
     expect(new BattleStore(storage).data).toEqual(fixture());
   });
 
+  it("persists disabled weapon keys independently for each mech and loads older records", () => {
+    const storage = new MemoryStorage();
+    const old = fixture();
+    storage.setItem(BATTLE_STORAGE_KEY, JSON.stringify(old));
+    const store = new BattleStore(storage);
+    expect(store.data.battles[0].teams[0].mechs[0].disabledWeapons).toBeUndefined();
+    store.update((data) => {
+      const mechs = data.battles[0].teams[0].mechs;
+      mechs.push({ id: "mech2", sourceMechId: "missing-file", name: "Annihilator 2", damage: null });
+      mechs[0].disabledWeapons = ["weapon-key"];
+    });
+    const saved = new BattleStore(storage).data.battles[0].teams[0].mechs;
+    expect(saved[0].disabledWeapons).toEqual(["weapon-key"]);
+    expect(saved[1].disabledWeapons).toBeUndefined();
+    store.update((data) => { data.battles[0].teams[0].mechs[0].disabledWeapons = []; });
+    expect(new BattleStore(storage).data.battles[0].teams[0].mechs[0].disabledWeapons).toEqual([]);
+  });
+
+  it("rejects malformed or duplicate disabled keys without overwriting storage", () => {
+    const storage = new MemoryStorage();
+    const store = new BattleStore(storage);
+    store.update((data) => Object.assign(data, fixture()));
+    const raw = storage.getItem(BATTLE_STORAGE_KEY);
+    expect(() => store.update((data) => { data.battles[0].teams[0].mechs[0].disabledWeapons = ["same", "same"]; })).toThrow(/disabled weapon/);
+    expect(storage.getItem(BATTLE_STORAGE_KEY)).toBe(raw);
+  });
+
   it("enforces unique colors and IDs and the 16-team limit", () => {
     expect(new Set(TEAM_COLORS).size).toBe(16);
     const data = fixture();
