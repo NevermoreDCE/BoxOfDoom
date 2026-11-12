@@ -308,13 +308,13 @@ Support firing rules not currently handled by the attack roller for weapons in b
 - Keep modes or weapons unavailable until their required rules are supported; clearly explain why they cannot be fired.
 - Add tests for each supported mode and its relevant edge cases.
 
-## 13. local settings/preferences
+## 11. better battle UI
+make color picker just colors (not numbers or names), group with name input as a simple dropdown on the end
+
+## 12. local settings/preferences
 change out the gear at the bottom, move that to a barchart icon
 add settings dialog, control default values for lots of stuff like:
 - range
 - gunnery
 - movement
 - TMM
-
-## 11. better battle UI
-make color picker just colors (not numbers or names), group with name input as a simple dropdown on the end
