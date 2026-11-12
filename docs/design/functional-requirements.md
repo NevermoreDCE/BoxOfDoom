@@ -240,3 +240,11 @@ Support firing rules not currently handled by the attack roller for weapons in b
 - Account for Clan, Inner Sphere, and mixed-tech equipment on a per-weapon basis.
 - Keep modes or weapons unavailable until their required rules are supported; clearly explain why they cannot be fired.
 - Add tests for each supported mode and its relevant edge cases.
+
+## 13. local settings/preferences
+change out the gear at the bottom, move that to a barchart icon
+add settings dialog, control default values for lots of stuff like:
+- range
+- gunnery
+- movement
+- TMM
