@@ -2,6 +2,7 @@ import "./style.css";
 import { getWeaponRange, parseAvailableMechs, resolveAttack, summarizeDamageByLocation, weaponTargetNumber, type AttackResult, type Facing, type Mech, type Weapon } from "./game";
 import { RollHistory } from "./roll-history";
 import { setupBattles } from "./battle-ui";
+import { setupDamageTracking } from "./damage-ui";
 
 const mechFiles = import.meta.glob(["../mechs/**/*.txt", "../mechs/**/*.mtf"], { eager: true, query: "?raw", import: "default" }) as Record<string, string>;
 const { mechs, errors: mechErrors } = parseAvailableMechs(mechFiles);
@@ -93,6 +94,7 @@ app.innerHTML = `
         </section>
       </section>
     </div>
+    <section id="damage-screen" hidden aria-label="Damage tracking"></section>
     <dialog id="battle-dialog" class="battle-dialog" aria-label="Choose a Battle"></dialog>
     <dialog id="roster-dialog" class="battle-dialog" aria-label="Manage Battle"></dialog>
     <footer>
@@ -317,10 +319,16 @@ getElement<HTMLButtonElement>("reset-rolls").addEventListener("click", () => {
     renderResults(results);
   });
 
-  setupBattles(mechs, (mech, savedDisabled, saveDisabled) => {
+  const damageTracking = setupDamageTracking(() => {
+    getElement("damage-screen").hidden = true;
+    getElement("attack-screen").hidden = !activeMech;
+  });
+
+  setupBattles(mechs, (mech, savedDisabled, saveDisabled, getDamageRoster, saveDamage) => {
     activeMech = mech;
     disabledWeapons = new Set(savedDisabled);
     saveDisabledWeapons = saveDisabled;
+    damageTracking.updateContext(getDamageRoster, saveDamage);
     getElement("attack-screen").hidden = !mech;
     getElement("attacker-name").textContent = mech?.name ?? "";
     range.value = "6";
@@ -340,6 +348,11 @@ getElement<HTMLButtonElement>("reset-rolls").addEventListener("click", () => {
     updateTargetNumber();
     renderStatus();
     renderResults(results);
+    if (!getElement("damage-screen").hidden) damageTracking.render();
+  }, (visible) => {
+    getElement("attack-screen").hidden = visible || !activeMech;
+    getElement("damage-screen").hidden = !visible;
+    if (visible) damageTracking.render();
   });
 
   range.addEventListener("input", () => {

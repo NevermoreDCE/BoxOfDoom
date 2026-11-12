@@ -7,7 +7,9 @@ A mobile-friendly BattleTech attack roller for the Beginner Box quick-start rule
 
 Create a Battle with an initial team, then use **Manage Battle and roster** to add teams and bundled 'Mechs, edit names and colors, or remove entries. A design may be added multiple times with different callsigns. Use the Battle switch button to open another saved Battle.
 
-Battles are saved automatically in local browser storage and the last open Battle is restored on return. Storage is specific to the browser and profile and can be cleared by the browser or user; it is not synchronized or backed up. Attack settings and volley results are not saved, and switching 'Mechs resets them. Damage tracking is not implemented yet.
+Battles are saved automatically in local browser storage and the last open Battle is restored on return. Storage is specific to the browser and profile and can be cleared by the browser or user; it is not synchronized or backed up. Attack settings and volley results are not saved, and switching 'Mechs resets them. Use **Damage tracking** to view and update armor and internal structure for any mech instance in the open Battle. Damage is saved per instance.
+
+Damage tracking uses the bundled armor and internal-structure diagrams. MTF armor and tonnage values and TXT-export armor/internal tables initialize each mech's damage record. Internal values for MTF designs use the standard biped tonnage table in `docs/design/functional-requirements.md`. Existing Battle data is migrated to the current storage version when loaded.
 
 Disable or re-enable a weapon by pressing and holding anywhere on its row, or by focusing the row and pressing D. A desktop double-click also works. Confirm the change when prompted. Disabled weapons are saved per 'Mech instance and excluded from selection, weapon heat, and firing. Re-enabled weapons are not automatically selected until the range changes.
 

@@ -1,3 +1,5 @@
+import { validateDamageRecord, type DamageRecord } from "./damage";
+
 export const TEAM_COLORS = [
   "#0077bb", "#ff7700", "#eeccbb", "#665533",
   "#aa00ff", "#bbccff", "#44ff77", "#bb6688",
@@ -9,13 +11,13 @@ export type BattleMech = {
   id: string;
   sourceMechId: string;
   name: string;
-  damage: null;
+  damage: DamageRecord | null;
   disabledWeapons?: string[];
 };
 
 export type Team = { id: string; name: string; color: string; mechs: BattleMech[] };
 export type Battle = { id: string; name: string; teams: Team[] };
-export type BattleData = { version: 1; activeBattleId: string | null; battles: Battle[] };
+export type BattleData = { version: 2; activeBattleId: string | null; battles: Battle[] };
 
 export const BATTLE_STORAGE_KEY = "box-of-doom-battles";
 
@@ -28,7 +30,7 @@ function nonempty(value: unknown): value is string {
 }
 
 export function validateBattleData(value: unknown): asserts value is BattleData {
-  if (!isObject(value) || value.version !== 1 || !Array.isArray(value.battles) ||
+  if (!isObject(value) || value.version !== 2 || !Array.isArray(value.battles) ||
       !(value.activeBattleId === null || nonempty(value.activeBattleId))) {
     throw new Error("Unrecognized or invalid Battle data.");
   }
@@ -56,9 +58,11 @@ export function validateBattleData(value: unknown): asserts value is BattleData 
       names.add(name);
       colors.add(team.color);
       for (const mech of team.mechs) {
-        if (!isObject(mech) || !nonempty(mech.sourceMechId) || !nonempty(mech.name) || mech.damage !== null) {
+        if (!isObject(mech) || !nonempty(mech.sourceMechId) || !nonempty(mech.name) ||
+            !(mech.damage === null || isObject(mech.damage))) {
           throw new Error("Invalid saved mech.");
         }
+        if (mech.damage !== null) validateDamageRecord(mech.damage);
         if (mech.disabledWeapons !== undefined &&
             (!Array.isArray(mech.disabledWeapons) || !mech.disabledWeapons.every(nonempty) ||
               new Set(mech.disabledWeapons).size !== mech.disabledWeapons.length)) {
@@ -77,11 +81,20 @@ export class BattleStore {
   constructor(private readonly storage: Storage) {
     this.raw = storage.getItem(BATTLE_STORAGE_KEY);
     if (this.raw === null) {
-      this.data = { version: 1, activeBattleId: null, battles: [] };
+      this.data = { version: 2, activeBattleId: null, battles: [] };
     } else {
       const parsed: unknown = JSON.parse(this.raw);
-      validateBattleData(parsed);
-      this.data = parsed;
+      if (isObject(parsed) && parsed.version === 1) {
+        const migrated: unknown = { ...parsed, version: 2 };
+        validateBattleData(migrated);
+        const raw = JSON.stringify(migrated);
+        storage.setItem(BATTLE_STORAGE_KEY, raw);
+        this.raw = raw;
+        this.data = migrated;
+      } else {
+        validateBattleData(parsed);
+        this.data = parsed;
+      }
     }
   }
 

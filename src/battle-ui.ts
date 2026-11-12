@@ -1,5 +1,12 @@
-import { BattleStore, TEAM_COLORS, defaultMechName, type Battle, type BattleData } from "./battles";
+import { BattleStore, TEAM_COLORS, defaultMechName, type Battle, type BattleData, type BattleMech } from "./battles";
 import type { Mech } from "./game";
+import type { DamageRecord } from "./damage";
+
+export type DamageRosterEntry = {
+  teamName: string;
+  instance: BattleMech;
+  definition?: Mech;
+};
 
 function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, (character) => ({
@@ -13,7 +20,14 @@ function id(): string {
 
 export function setupBattles(
   mechs: Mech[],
-  onSelect: (mech: Mech | undefined, disabledWeapons: string[], saveDisabled: (keys: string[]) => boolean) => void
+  onSelect: (
+    mech: Mech | undefined,
+    disabledWeapons: string[],
+    saveDisabled: (keys: string[]) => boolean,
+    getDamageRoster: () => DamageRosterEntry[],
+    saveDamage: (mechId: string, damage: DamageRecord) => string | undefined
+  ) => void,
+  onDamageView: (visible: boolean) => void
 ): void {
   const controls = document.querySelector<HTMLElement>("#battle-controls");
   const picker = document.querySelector<HTMLDialogElement>("#battle-dialog");
@@ -26,7 +40,7 @@ export function setupBattles(
   } catch (error) {
     console.error("Could not load Battles:", error);
     controls.innerHTML = `<p class="error" role="alert">Battles could not be loaded. Check browser storage and reload. Saved data has not been changed.</p>`;
-    onSelect(undefined, [], () => false);
+    onSelect(undefined, [], () => false, () => [], () => "Battle storage is unavailable.");
     return;
   }
 
@@ -37,6 +51,21 @@ export function setupBattles(
     const battle = data.battles.find((item) => item.id === data.activeBattleId);
     if (!battle) throw new Error("No Battle is open.");
     return battle;
+  };
+  const getDamageRoster = (): DamageRosterEntry[] => activeBattle()?.teams.flatMap((team) =>
+    team.mechs.map((instance) => ({
+      teamName: team.name,
+      instance,
+      definition: mechs.find((mech) => mech.id === instance.sourceMechId)
+    }))
+  ) ?? [];
+  const saveDamage = (mechId: string, damage: DamageRecord): string | undefined => {
+    const success = save((data) => {
+      const current = findBattle(data).teams.flatMap((team) => team.mechs).find((mech) => mech.id === mechId);
+      if (!current) throw new Error("The selected mech is no longer available.");
+      current.damage = damage;
+    });
+    return success ? undefined : errorMessage || "Damage could not be saved.";
   };
   const paletteOptions = (selected?: string, used: string[] = []): string => TEAM_COLORS.map((color, index) =>
     `<option value="${color}"${color === selected ? " selected" : ""}${used.includes(color) && color !== selected ? " disabled" : ""}>Color ${index + 1} (${color})</option>`
@@ -78,7 +107,7 @@ export function setupBattles(
           const current = findBattle(data).teams.flatMap((team) => team.mechs).find((mech) => mech.id === instanceId);
           if (!current || selectedId !== instanceId) throw new Error("The selected mech is no longer available.");
           current.disabledWeapons = keys;
-        }));
+        }), getDamageRoster, saveDamage);
     }
   };
 
@@ -98,7 +127,8 @@ export function setupBattles(
       ${alert}
       <label class="field"><span>Team / 'Mech</span><select id="battle-mech-select"${selectedId ? "" : " disabled"}>${selectedId ? options : '<option>No mechs in this Battle</option>'}</select></label>
       ${missing ? `<p class="battle-error" role="alert">This mech's bundled design is unavailable. Its roster entry is preserved; remove it or restore the original design file.</p>` : ""}
-      <button class="secondary-button" type="button" data-action="manage">Manage Battle and roster</button>
+      <div class="battle-actions"><button class="secondary-button" type="button" data-action="damage">Damage tracking</button>
+        <button class="secondary-button" type="button" data-action="manage">Manage Battle and roster</button></div>
     ` : `<p class="notice">Choose or create a Battle to begin.</p>${alert}<button class="secondary-button" type="button" data-action="pick">Choose Battle</button>`;
 
     picker.innerHTML = `
@@ -168,6 +198,7 @@ export function setupBattles(
     if (!button) return;
     const action = button.dataset.action;
     if (action === "pick") { render(); picker.showModal(); return; }
+    if (action === "damage") { onDamageView(true); return; }
     if (action === "manage") { render(); manager.showModal(); return; }
     if (action === "close-picker") { picker.close(); return; }
     if (action === "close-manager") { manager.close(); return; }

@@ -103,6 +103,32 @@ for each selected weapon:
 
 For "Floating Crit" results, roll again to deterimine the location of the crit and indicate that it is a crit in that location.
 
+## BattleMech Internal Structure by Tonnage
+
+Reference table for standard biped BattleMechs. The values are internal-structure points per location; left/right side torsos, arms, and legs use the same value. This table is transcribed from MegaMek's [`Mek.getInternalForTonnage`](https://github.com/MegaMek/megamek/blob/master/megamek/src/megamek/common/units/Mek.java) (the source array order is Head, Center Torso, Side Torso, Arm, Leg). For tonnages between 10 and 100 that are not multiples of 5, MegaMek selects the next 5-ton increment.
+
+| Tonnage | Head | Center Torso | Each Side Torso | Each Arm | Each Leg |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 10 | 3 | 4 | 3 | 1 | 2 |
+| 15 | 3 | 5 | 4 | 2 | 3 |
+| 20 | 3 | 6 | 5 | 3 | 4 |
+| 25 | 3 | 8 | 6 | 4 | 6 |
+| 30 | 3 | 10 | 7 | 5 | 7 |
+| 35 | 3 | 11 | 8 | 6 | 8 |
+| 40 | 3 | 12 | 10 | 6 | 10 |
+| 45 | 3 | 14 | 11 | 7 | 11 |
+| 50 | 3 | 16 | 12 | 8 | 12 |
+| 55 | 3 | 18 | 13 | 9 | 13 |
+| 60 | 3 | 20 | 14 | 10 | 14 |
+| 65 | 3 | 21 | 15 | 10 | 15 |
+| 70 | 3 | 22 | 15 | 11 | 15 |
+| 75 | 3 | 23 | 16 | 12 | 16 |
+| 80 | 3 | 25 | 17 | 13 | 17 |
+| 85 | 3 | 27 | 18 | 14 | 18 |
+| 90 | 3 | 29 | 19 | 15 | 19 |
+| 95 | 3 | 30 | 20 | 16 | 20 |
+| 100 | 3 | 31 | 21 | 17 | 21 |
+
 ---
 
 # Post-MVP Updates
@@ -166,9 +192,9 @@ when loading the ANH-2L, the jump jets are being shown as weapons
 # ideas
 
 ## 1. improved mech picker
-ability to pick custom mechs from /mechs/ folder, or to open a stock mech from the megamek API/repository/MUL
+ability to pick custom mechs from /mechs/ folder, ~~or to open a stock mech from the megamek API/repository/MUL~~ (removed due to janky megamek code/data, no good consistent way to load dynamically from their sources)
 
-## 2. long-term record of "Battles" & ability to track multiple mechs
+## 2. long-term record of "Battles" & ability to track multiple mechs - DONE
 
 ### Battles and persistence
 - Store Battles in the browser's local storage so they persist between visits in the same browser and profile. Cross-device or cross-browser synchronization is out of scope; see Idea 9 for export and import.
@@ -194,17 +220,58 @@ ability to pick custom mechs from /mechs/ folder, or to open a stock mech from t
 - Version and validate saved Battle data so future damage-tracking changes can be migrated. Handle unavailable or invalid storage explicitly without silently discarding saved data.
 - Account for bundled mech definitions changing or disappearing in a later app version without silently losing a saved roster.
 
-## 3. disable weapons
+## 3. disable weapons - DONE
 Pressing and holding anywhere on a weapon row (or double-clicking on desktop) should give the option, with a confirmation dialog, to disable or re-enable a weapon. A disabled weapon cannot be selected for firing and is ignored by the app.
 - Save disabled weapons per 'Mech instance in the Battle, including across reloads and Battle or 'Mech switches. Do not retain ordinary attack selections.
 - Disabled weapons are excluded from default selection, heat, and firing. Re-enabled weapons must be selected manually or by a subsequent range reset, and remain unavailable if their range or firing rules do not permit selection.
 - Allow keyboard users to focus a weapon row and press D to disable or re-enable it; do not add a separate action button. Preserve and report saved disabled entries that no longer match the bundled design.
 
-## 4. Damage Tracking
-separate screen for tracking damage to mech
-pick a mech from the current battle
-shows all damage locations, total and current armor & internals, tap location and enter a number to apply damage to that location
-if a publicly licensed free-to-use image is available, prefer to use an image of the mech layout similar to what is seen on normal printed rosters (make each section of the mech 'tapable/clickable' and display numeric armor/internals); if no publicly-licensed image is available then just use a list of buttons in the order of the hit chart.
+## 4. Damage Tracking  - Done
+Add a separate damage-tracking screen for BattleMech instances in the open Battle. This depends on Idea 2 (Battles); Idea 5 (applying volley damage) will use the same saved damage state but is not required for this idea.
+
+### User experience
+
+- Provide a way to open the damage screen from the active Battle and return to the previous screen without changing the active attack mech, its attack settings, or its results.
+- Let the user choose any mech instance in the open Battle, including mechs on other teams. Identify each entry by team and callsign so duplicate chassis are unambiguous. Preserve roster entries whose bundled mech definition is missing, but do not offer damage tracking for them until their record-sheet values can be loaded.
+- Show every supported location's maximum and remaining armor and internal structure, plus battle-mech-wide current/maximum totals. Show front and rear torso armor separately; torso internal structure is shared between the two facings. A location with zero remaining points stays visible.
+- Use the provided `docs/design/diagrams/ArmorDiagram.svg` for both front- and rear-armor views and `docs/design/diagrams/InternalsDiagram.svg` for internal structure. Embed the SVGs inline so the UI can address individual location elements and update their fill colors based on current damage; preserve the diagram outlines and labels.
+- In the rear-armor view, only the left torso, center torso, and right torso are interactive/data-bearing armor locations. Render the head, both arms, and both legs as context only with opacity no greater than 20%; they must not be selectable or appear to have rear armor values.
+- Color each applicable SVG section according to that section's remaining points divided by its maximum points. Use HSL interpolation from bright green `#26FF00` at 100%, through yellow `#FFFF00` at 50%, to red `#E02020` at 5%. Continue the HSL transition from red to dark gray `#101010` at 0%; zero-health locations remain visibly dark gray rather than transparent. Clamp health percentages to 0–100%.
+- Prefer a small, pure JavaScript/TypeScript color-mapping function that converts the normalized health percentage to an HSL color and fill opacity, then applies these to the targeted inline SVG location element. Calibrate the interpolation endpoints to the specified hex colors; do not rely on CSS-only gradients or use the SVG's static fill as the damage indicator. Keep the SVG stroke/outline opacity independent from fill opacity, including at zero health.
+- Provide accessible labels and equivalent keyboard-operable controls for every interactive location/armor section. If a provided SVG is unavailable or cannot be embedded/accessed by location, show the responsive list of location controls ordered by first appearance on the Front/Rear column of the existing hit-location table (rolls 2 through 12), excluding the non-location "Floating Crit" result.
+
+### Applying and correcting damage
+
+- Tapping/clicking a location or armor section opens a dialog with a numeric, non-negative integer damage amount and an explicit Apply and Cancel action. Reject blank, fractional, negative, non-numeric, and unsafe-integer input without changing saved damage. Do not apply a change on dialog dismissal or cancellation.
+- For a torso, require the user to choose front or rear armor; default to front. For all other locations, apply against that location's single armor value.
+- Proposed default damage behavior: subtract the amount from the selected armor first, then apply any remainder to that location's internal structure. Clamp both values at zero, display any damage beyond the remaining armor and internal structure as unapplied, and do not transfer damage to another location. Do not roll hit locations, perform critical-hit rolls, or model location-transfer/destruction effects.
+- Provide a clearly labeled way to restore a mech instance to its original armor and internal values, with confirmation. Persist each successful change immediately. Do not add a per-hit damage log as part of this idea.
+- Display remaining values against their recorded maximums and update the location and BattleMech totals immediately after a change. Include rear armor in armor totals and count each location's internal structure only once.
+
+### Data and implementation requirements
+
+- Keep damage on the BattleMech instance, not on the shared bundled chassis definition. Store each location's maximum and current armor and internal values, with separate current/maximum rear-armor values for the center, left, and right torso. Store the source design identity/version used to initialize the record so existing damage remains stable if bundled definitions later change or disappear.
+- Initialize an instance from its bundled design the first time its damage record is created. Existing Battle entries with the current `damage: null` placeholder must migrate without losing their IDs, names, team membership, or disabled-weapon data. Version and validate the saved Battle format; preserve unsupported or unavailable saved entries and report migration/storage errors rather than silently resetting the Battle.
+- Extend mech loading to produce validated per-location maximum armor and internal-structure values. MTF files provide front armor, rear-torso armor, and tonnage; derive internal points using the standard biped table above. MegaMek TXT exports may contain an explicit internal/armor table, including combined R/L entries, which must be parsed without assuming asymmetric values. Reject incomplete, duplicate, negative, or contradictory location data as unavailable instead of inventing values.
+- Define and test the supported location set for biped 'Mechs: Head, Center Torso, Left Torso, Right Torso, Left Arm, Right Arm, Left Leg, and Right Leg. Rear armor is supported only for Center, Left, and Right Torso. Designs with unsupported configurations or incomplete required values must show a clear unavailable reason rather than an incomplete or misleading damage sheet.
+- Keep damage operations in a reusable model layer so the UI and future Idea 5 apply-damage flow use identical validation, overflow, persistence, and totals behavior. Do not store attack settings, volley results, or a combat log as a side effect of damage tracking.
+
+### Acceptance checks
+
+- A new damage record matches the loaded design's maximum values; repeated visits and page reloads retain current values for that BattleMech instance only.
+- Two instances of the same design can have different damage. Switching selected mechs, teams, or Battles never copies or resets another instance's damage.
+- Front and rear torso armor remain distinct, and damage overflowing the selected surface reaches only that torso's internal structure. Damage never makes a stored value negative; overkill is reported and ignored.
+- SVG fill color reflects each location's own remaining/max armor or internal points: 100% is `#26FF00`, 50% is `#FFFF00`, 5% is `#E02020`, and 0% is `#101010`. Verify intermediate HSL interpolation through the green-yellow-red-gray spectrum and ensure unrelated SVG locations retain their own damage-derived appearance.
+- In the rear-armor view, the head, arms, and legs stay at no more than 20% opacity, are grey-filled regardless of their actual damage status, and do not become interactive or show rear-armor values, regardless of their front armor or internal-structure damage.
+- Armor and internal totals include all locations (and rear armor) exactly once, update after damage and restoration, and display current versus maximum values.
+- A missing design, malformed saved damage, failed storage write, or concurrent Battle edit is reported without silently overwriting or discarding saved Battle data.
+- Keyboard and touch users can select each location/surface, enter damage, cancel safely, and restore values with confirmation.
+
+### Implementation notes
+
+- Apply damage armor-first, then to the same location's internal structure; do not transfer excess damage or roll critical effects. Use the saved per-instance maxima even if the bundled source design later changes or disappears.
+- Derive MTF internal values from tonnage using the table above. Treat incomplete or unsupported damage profiles as unavailable without affecting attack-roll mech loading.
+- The provided diagrams are generic BattleMech silhouettes rather than design-specific record sheets; use them for all supported biped designs unless a future requirement replaces them.
 
 ## 5. Apply Damage button & picker
 requires "battles" to be implemented, requires "Damage tracking" to be implemented
@@ -215,7 +282,7 @@ infantry, vehicles, aerospace, artillery, etc
 
 ## 7. Multiplayer mode
 (intended to allow other players at the table to 'submit' their attack results to the GM's authoritative list)
-use Firebase as a backend to allow synchronization between multiple clients, anonymous authentication
+use Supabase as a backend to allow synchronization between multiple clients, anonymous authentication
 one user would be the Host, they would select teh Battle and that battle would generate a Lobby Code (6-character alpha-numeric value), store host ID as part of the lobby data
 lobbies should be automatically deleted after 24 hours
 other users could join that lobby by entering that code, specifying their name and team
@@ -240,3 +307,6 @@ Support firing rules not currently handled by the attack roller for weapons in b
 - Account for Clan, Inner Sphere, and mixed-tech equipment on a per-weapon basis.
 - Keep modes or weapons unavailable until their required rules are supported; clearly explain why they cannot be fired.
 - Add tests for each supported mode and its relevant edge cases.
+
+## 11. better battle UI
+make color picker just colors (not numbers or names), group with name input as a simple dropdown on the end

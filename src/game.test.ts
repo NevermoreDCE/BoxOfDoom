@@ -19,6 +19,7 @@ describe("mech equipment parsing", () => {
     const mechs = parseMechs(files);
     expect(mechs).toHaveLength(Object.keys(files).length);
     expect(mechs.some((mech) => mech.name === "Galahad")).toBe(true);
+    expect(mechs.filter((mech) => /\.mtf$/i.test(mech.id)).every((mech) => mech.damageProfile !== null)).toBe(true);
   });
 
   it("reports a broken design without hiding other bundled designs", () => {
@@ -43,6 +44,12 @@ describe("mech equipment parsing", () => {
     expect(gladiator.weapons.every((weapon) => weapon.profile !== null)).toBe(true);
     expect(annihilator.weapons.every((weapon) => weapon.ranges !== null)).toBe(true);
     expect(gladiator.weapons.every((weapon) => weapon.ranges !== null)).toBe(true);
+    expect(annihilator.damageProfile).toMatchObject({
+      head: { armor: 9, internal: 3 },
+      "center-torso": { armor: 25, rearArmor: 10, internal: 31 },
+      "left-torso": { armor: 21, rearArmor: 9, internal: 21 },
+      "right-arm": { armor: 24, internal: 17 }
+    });
     expect(gladiator.weapons.find((weapon) => weapon.name.startsWith("LRM 5"))?.ranges)
       .toEqual({ minimum: 6, short: 7, medium: 14, long: 21 });
   });

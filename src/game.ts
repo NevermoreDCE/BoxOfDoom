@@ -1,5 +1,11 @@
 import rangeData from "../data/weapon-ranges.txt?raw";
 import additionalData from "../data/weapon-additional.txt?raw";
+import {
+  DAMAGE_LOCATION_KEYS,
+  internalStructureForTonnage,
+  type DamageProfile,
+  type DamageLocationKey
+} from "./damage";
 
 export type Facing = "Front" | "Left" | "Right" | "Rear";
 
@@ -31,7 +37,134 @@ export type Mech = {
   chassis: string;
   heatSinkCapacity: number;
   weapons: Weapon[];
+  damageProfile: DamageProfile | null;
+  damageUnavailableReason?: string;
 };
+
+const mechArmorFieldKeys: Record<DamageLocationKey, string> = {
+  head: "HD", "center-torso": "CT", "left-torso": "LT", "right-torso": "RT",
+  "left-arm": "LA", "right-arm": "RA", "left-leg": "LL", "right-leg": "RL"
+};
+const rearArmorFieldKeys: Record<"center-torso" | "left-torso" | "right-torso", string> = {
+  "center-torso": "RTC", "left-torso": "RTL", "right-torso": "RTR"
+};
+
+function makeDamageProfile(
+  armor: Partial<Record<DamageLocationKey, number>>,
+  rearArmor: Partial<Record<"center-torso" | "left-torso" | "right-torso", number>>,
+  internal: Record<DamageLocationKey, number>
+): DamageProfile {
+  const profile = {} as DamageProfile;
+  for (const key of DAMAGE_LOCATION_KEYS) {
+    const armorValue = armor[key];
+    const internalValue = internal[key];
+    if (typeof armorValue !== "number" || !Number.isSafeInteger(armorValue) || armorValue < 0) throw new Error(`Invalid ${key} armor data.`);
+    if (typeof internalValue !== "number" || !Number.isSafeInteger(internalValue) || internalValue < 0) throw new Error(`Invalid ${key} internal structure data.`);
+    const location: DamageProfile[DamageLocationKey] = {
+      armor: armorValue,
+      internal: internalValue
+    };
+    if (key === "center-torso" || key === "left-torso" || key === "right-torso") {
+      const rear = rearArmor[key];
+      if (typeof rear !== "number" || !Number.isSafeInteger(rear) || rear < 0) throw new Error(`Invalid ${key} rear armor data.`);
+      location.rearArmor = rear;
+    }
+    profile[key] = location;
+  }
+  return profile;
+}
+
+function readMtfDamageProfile(field: (key: string) => string | undefined): { profile: DamageProfile | null; reason?: string } {
+  const config = field("config");
+  if (!config || !/^Biped(?:\s|$)/i.test(config)) {
+    return { profile: null, reason: `Unsupported mech configuration: ${config ?? "unspecified"}.` };
+  }
+  const tonnageText = field("mass");
+  if (!tonnageText || !/^\d+$/.test(tonnageText)) return { profile: null, reason: "Mech tonnage is unavailable or invalid." };
+  let internal: Record<DamageLocationKey, number>;
+  try {
+    internal = internalStructureForTonnage(Number(tonnageText));
+  } catch (error) {
+    return { profile: null, reason: error instanceof Error ? error.message : String(error) };
+  }
+  const armor: Partial<Record<DamageLocationKey, number>> = {};
+  const rear: Partial<Record<"center-torso" | "left-torso" | "right-torso", number>> = {};
+  for (const [location, code] of Object.entries(mechArmorFieldKeys) as [DamageLocationKey, string][]) {
+    const value = field(`${code} armor`);
+    if (!value || !/^\d+$/.test(value)) return { profile: null, reason: `Armor data is unavailable for ${location}.` };
+    armor[location] = Number(value);
+  }
+  for (const [location, code] of Object.entries(rearArmorFieldKeys) as ["center-torso" | "left-torso" | "right-torso", string][]) {
+    const value = field(`${code} armor`);
+    if (!value || !/^\d+$/.test(value)) return { profile: null, reason: `Rear armor data is unavailable for ${location}.` };
+    rear[location] = Number(value);
+  }
+  try {
+    return { profile: makeDamageProfile(armor, rear, internal) };
+  } catch (error) {
+    return { profile: null, reason: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+function readTxtDamageProfile(lines: string[]): { profile: DamageProfile | null; reason?: string } {
+  const tableHeader = lines.findIndex((line) => /^\s*Internal\s+Armor\s*$/i.test(line));
+  const tableStart = tableHeader >= 0 && /^\s*Structure\s+Value\s*$/.test(lines[tableHeader + 1] ?? "")
+    ? tableHeader + 1 : -1;
+  if (tableStart < 0) return { profile: null, reason: "The mech export has no internal-structure and armor table." };
+
+  const armor: Partial<Record<DamageLocationKey, number>> = {};
+  const internal: Partial<Record<DamageLocationKey, number>> = {};
+  const rear: Partial<Record<"center-torso" | "left-torso" | "right-torso", number>> = {};
+  const assign = (keys: DamageLocationKey[], points: number, values: Partial<Record<DamageLocationKey, number>>, label: string): void => {
+    for (const key of keys) {
+      if (values[key] !== undefined) throw new Error(`Duplicate ${label} data for ${key}.`);
+      values[key] = points;
+    }
+  };
+  try {
+    for (const line of lines.slice(tableStart + 1)) {
+      const cells = line.trim().split(/\s{2,}/);
+      if (cells.length < 2) {
+        if (Object.keys(armor).length) break;
+        continue;
+      }
+      const label = cells[0].trim();
+      const rearRow = label.match(/^(Center Torso|R\/L Torso)\s+\(rear\)$/i);
+      const baseRow = rearRow ? rearRow[1] : label;
+      const keys: DamageLocationKey[] = baseRow.toLowerCase() === "head" ? ["head"]
+        : baseRow.toLowerCase() === "center torso" ? ["center-torso"]
+          : baseRow.toLowerCase() === "r/l torso" ? ["left-torso", "right-torso"]
+            : baseRow.toLowerCase() === "r/l arm" ? ["left-arm", "right-arm"]
+              : baseRow.toLowerCase() === "r/l leg" ? ["left-leg", "right-leg"] : [];
+      if (!keys.length) continue;
+      const pointCells = cells.slice(1);
+      if (rearRow) {
+        const value = pointCells.at(-1);
+        if (!/^\d+$/.test(value ?? "")) throw new Error(`Invalid rear armor value for ${label}.`);
+        const targets = baseRow.toLowerCase() === "center torso" ? ["center-torso"] as const : ["left-torso", "right-torso"] as const;
+        for (const key of targets) {
+          if (rear[key] !== undefined) throw new Error(`Duplicate rear armor data for ${key}.`);
+          rear[key] = Number(value);
+        }
+      } else {
+        if (pointCells.length !== 2 || !pointCells.every((value) => /^\d+$/.test(value))) {
+          throw new Error(`Invalid armor or internal structure data for ${label}.`);
+        }
+        assign(keys, Number(pointCells[0]), internal, "internal structure");
+        assign(keys, Number(pointCells[1]), armor, "armor");
+      }
+    }
+    const completeInternal = {} as Record<DamageLocationKey, number>;
+    for (const key of DAMAGE_LOCATION_KEYS) {
+      const value = internal[key];
+      if (value === undefined) throw new Error(`Missing internal structure data for ${key}.`);
+      completeInternal[key] = value;
+    }
+    return { profile: makeDamageProfile(armor, rear, completeInternal) };
+  } catch (error) {
+    return { profile: null, reason: error instanceof Error ? error.message : String(error) };
+  }
+}
 
 export type DamageLocation = {
   damage: number;
@@ -344,7 +477,12 @@ export function parseMech(id: string, contents: string): Mech {
     });
   }
   const chassis = name.match(/^(.+?)\s+[A-Z0-9]+-[A-Z0-9]+$/i)?.[1] ?? name;
-  return { id, name, chassis, heatSinkCapacity, weapons };
+  const damage = readTxtDamageProfile(lines);
+  return {
+    id, name, chassis, heatSinkCapacity, weapons,
+    damageProfile: damage.profile,
+    damageUnavailableReason: damage.reason
+  };
 }
 
 export function parseMtf(id: string, contents: string): Mech {
@@ -363,6 +501,7 @@ export function parseMtf(id: string, contents: string): Mech {
     throw new Error(`Could not determine chassis and model for '${id}'.`);
   }
   const name = [chassis, model].filter(Boolean).join(" ");
+  const damage = readMtfDamageProfile(field);
   const sinks = field("heat sinks")?.match(/^(\d+)\s+(?:(?:IS|Clan)\s+)?(Single|Double)$/i);
   if (!sinks) throw new Error(`Could not determine heat-sink capacity for '${name}'.`);
   const heatSinkCapacity = Number(sinks[1]) * (sinks[2].toLowerCase() === "double" ? 2 : 1);
@@ -440,7 +579,11 @@ export function parseMtf(id: string, contents: string): Mech {
       });
     }
   }
-  return { id, name, chassis, heatSinkCapacity, weapons };
+  return {
+    id, name, chassis, heatSinkCapacity, weapons,
+    damageProfile: damage.profile,
+    damageUnavailableReason: damage.reason
+  };
 }
 
 export function parseMechs(files: Record<string, string>): Mech[] {
