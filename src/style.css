@@ -79,6 +79,15 @@ h2 { margin: 0 0 1rem; color: #fff; font-size: 1.15rem; }
 .location-damage-list { margin: 0; }
 .location-damage-list > div { display: flex; justify-content: space-between; gap: 1rem; padding: .45rem .25rem; border-top: 1px solid #263449; }
 .location-damage-list dd { margin: 0; font-weight: 750; font-variant-numeric: tabular-nums; }
+.apply-damage-actions { display: grid; gap: .25rem; margin-top: 1rem; }
+.apply-damage-actions .secondary-button { justify-self: start; min-width: 180px; }
+.apply-damage-status { min-height: 1.2rem; margin: .25rem 0 0; color: var(--muted); font-size: .85rem; }
+.secondary-button:disabled { opacity: .5; cursor: not-allowed; }
+.apply-damage-preview { padding: .75rem; border: 1px solid var(--border); border-radius: .6rem; background: #0e1727; }
+.apply-damage-preview:empty { display: none; }
+.apply-damage-preview h3 { margin: 0 0 .5rem; font-size: .95rem; }
+.apply-damage-preview ul { display: grid; gap: .4rem; margin: 0; padding-left: 1.1rem; font-size: .85rem; line-height: 1.4; }
+.apply-damage-preview p { margin: 0; color: var(--muted); font-size: .85rem; }
 .result-card { padding: .9rem; border: 1px solid var(--border); border-radius: .75rem; background: #0e1727; }
 .compact-results .result-list { gap: .45rem; }
 .compact-results .compact-result { overflow: hidden; padding: 0; }

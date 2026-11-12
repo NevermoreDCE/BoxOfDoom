@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   applyDamage,
+  applyDamageByLocation,
   createDamageRecord,
   damageFill,
   getDamageTotals,
@@ -55,6 +56,33 @@ describe("damage records", () => {
     expect(result.record.locations["left-torso"].rearArmor?.current).toBe(0);
     expect(result.record.locations["left-torso"].internal.current).toBe(19);
     expect(result.record.locations["left-torso"].armor.current).toBe(32);
+  });
+
+  it("applies a volley by location in one result and reports armor, internals, and overkill", () => {
+    const record = createDamageRecord("atlas.mtf", profile);
+    const result = applyDamageByLocation(record, {
+      head: 20,
+      "center-torso": 20,
+      "left-torso": 20
+    }, "Rear");
+
+    expect(result.applications).toEqual([
+      { location: "head", surface: "Front", amount: 20, armorDamage: 9, internalDamage: 3, unapplied: 8 },
+      { location: "center-torso", surface: "Rear", amount: 20, armorDamage: 14, internalDamage: 6, unapplied: 0 },
+      { location: "left-torso", surface: "Rear", amount: 20, armorDamage: 10, internalDamage: 10, unapplied: 0 }
+    ]);
+    expect(result.record.locations.head.armor.current).toBe(0);
+    expect(result.record.locations["center-torso"].armor.current).toBe(45);
+    expect(result.record.locations["center-torso"].rearArmor?.current).toBe(0);
+    expect(record.locations.head.armor.current).toBe(9);
+  });
+
+  it("rejects invalid volley damage without changing the source record", () => {
+    const record = createDamageRecord("atlas.mtf", profile);
+    expect(() => applyDamageByLocation(record, { head: -1 })).toThrow(/non-negative whole number/);
+    expect(() => applyDamageByLocation(record, { head: 1.5 })).toThrow(/non-negative whole number/);
+    expect(() => applyDamageByLocation(record, { head: Number.MAX_SAFE_INTEGER + 1 })).toThrow(/non-negative whole number/);
+    expect(record.locations.head.armor.current).toBe(9);
   });
 
   it("restores armor and internals without changing the saved maximums", () => {

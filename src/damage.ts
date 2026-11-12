@@ -31,6 +31,15 @@ export type DamageTotals = {
   internal: DamageValue;
 };
 
+export type LocationDamageApplication = {
+  location: DamageLocationKey;
+  surface: DamageSurface;
+  amount: number;
+  armorDamage: number;
+  internalDamage: number;
+  unapplied: number;
+};
+
 const torsoLocations = new Set<DamageLocationKey>(["center-torso", "left-torso", "right-torso"]);
 
 const internalStructureByTonnage: Readonly<Record<number, readonly [number, number, number, number, number]>> = {
@@ -161,6 +170,48 @@ export function applyDamage(
   const internalDamage = Math.min(remaining, target.internal.current);
   target.internal.current -= internalDamage;
   return { record: next, unapplied: remaining - internalDamage };
+}
+
+export function applyDamageByLocation(
+  record: DamageRecord,
+  amounts: Partial<Record<DamageLocationKey, number>>,
+  surface: DamageSurface = "Front"
+): { record: DamageRecord; applications: LocationDamageApplication[] } {
+  validateDamageRecord(record);
+  if (!isObject(amounts)) throw new Error("Location damage must be an object.");
+  for (const key of Object.keys(amounts)) {
+    if (!DAMAGE_LOCATION_KEYS.includes(key as DamageLocationKey)) throw new Error(`Unknown damage location: ${key}.`);
+    const amount = amounts[key as DamageLocationKey];
+    if (!Number.isSafeInteger(amount) || (amount as number) < 0) {
+      throw new Error("Damage must be a non-negative whole number.");
+    }
+  }
+  if (surface !== "Front" && surface !== "Rear") throw new Error("Unknown armor facing.");
+
+  let next = record;
+  const applications: LocationDamageApplication[] = [];
+  for (const location of DAMAGE_LOCATION_KEYS) {
+    const amount = amounts[location];
+    if (amount === undefined || amount === 0) continue;
+    const armorSurface = torsoLocations.has(location) ? surface : "Front";
+    const before = next.locations[location];
+    const armor = armorSurface === "Rear" ? before.rearArmor : before.armor;
+    if (!armor) throw new Error(`Rear armor is unavailable at ${location}.`);
+    const result = applyDamage(next, location, amount, armorSurface);
+    const after = result.record.locations[location];
+    const updatedArmor = armorSurface === "Rear" ? after.rearArmor : after.armor;
+    if (!updatedArmor) throw new Error(`Rear armor is unavailable at ${location}.`);
+    applications.push({
+      location,
+      surface: armorSurface,
+      amount,
+      armorDamage: armor.current - updatedArmor.current,
+      internalDamage: before.internal.current - after.internal.current,
+      unapplied: result.unapplied
+    });
+    next = result.record;
+  }
+  return { record: next, applications };
 }
 
 export function restoreDamage(record: DamageRecord): DamageRecord {

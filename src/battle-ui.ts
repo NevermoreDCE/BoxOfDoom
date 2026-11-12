@@ -3,6 +3,7 @@ import type { Mech } from "./game";
 import type { DamageRecord } from "./damage";
 
 export type DamageRosterEntry = {
+  teamId: string;
   teamName: string;
   instance: BattleMech;
   definition?: Mech;
@@ -25,6 +26,7 @@ export function setupBattles(
     disabledWeapons: string[],
     saveDisabled: (keys: string[]) => boolean,
     getDamageRoster: () => DamageRosterEntry[],
+    getCurrentTeamId: () => string | undefined,
     saveDamage: (mechId: string, damage: DamageRecord) => string | undefined
   ) => void,
   onDamageView: (visible: boolean) => void
@@ -40,7 +42,7 @@ export function setupBattles(
   } catch (error) {
     console.error("Could not load Battles:", error);
     controls.innerHTML = `<p class="error" role="alert">Battles could not be loaded. Check browser storage and reload. Saved data has not been changed.</p>`;
-    onSelect(undefined, [], () => false, () => [], () => "Battle storage is unavailable.");
+    onSelect(undefined, [], () => false, () => [], () => undefined, () => "Battle storage is unavailable.");
     return;
   }
 
@@ -54,11 +56,15 @@ export function setupBattles(
   };
   const getDamageRoster = (): DamageRosterEntry[] => activeBattle()?.teams.flatMap((team) =>
     team.mechs.map((instance) => ({
+      teamId: team.id,
       teamName: team.name,
       instance,
       definition: mechs.find((mech) => mech.id === instance.sourceMechId)
     }))
   ) ?? [];
+  const getCurrentTeamId = (): string | undefined => activeBattle()?.teams.find((team) =>
+    team.mechs.some((instance) => instance.id === selectedId)
+  )?.id;
   const saveDamage = (mechId: string, damage: DamageRecord): string | undefined => {
     const success = save((data) => {
       const current = findBattle(data).teams.flatMap((team) => team.mechs).find((mech) => mech.id === mechId);
@@ -107,7 +113,7 @@ export function setupBattles(
           const current = findBattle(data).teams.flatMap((team) => team.mechs).find((mech) => mech.id === instanceId);
           if (!current || selectedId !== instanceId) throw new Error("The selected mech is no longer available.");
           current.disabledWeapons = keys;
-        }), getDamageRoster, saveDamage);
+        }), getDamageRoster, getCurrentTeamId, saveDamage);
     }
   };
 

@@ -274,8 +274,27 @@ Add a separate damage-tracking screen for BattleMech instances in the open Battl
 - The provided diagrams are generic BattleMech silhouettes rather than design-specific record sheets; use them for all supported biped designs unless a future requirement replaces them.
 
 ## 5. Apply Damage button & picker
-requires "battles" to be implemented, requires "Damage tracking" to be implemented
-at the end of the Volley Results section, add an option to select the target from other mechs in the battle and then apply the damage numbers to that mech directly
+Requires Idea 2 (Battles) and Idea 4 (Damage Tracking).
+
+### User experience
+
+- Add an **Apply Damage** action to the Volley Results section. It is available only while the current volley has results and at least one BattleMech in the open Battle has a usable damage record.
+- Choosing the action opens a target picker listing eligible BattleMech instances in the open Battle. Identify each target by team and callsign; do not identify a target by chassis name alone.
+- Eligible targets are BattleMechs on any team other than the active mech's team. Do not allow the active mech or any other mech on its team to be selected.
+- Exclude targets whose damage profiles are unavailable or invalid, and explain why they cannot be selected. Do not silently omit them from the roster or initialize incomplete damage data.
+- After target selection, show a concise preview grouped by hit location, including projected armor/internal-structure changes and any unapplied overkill. Do not show a weapon-by-weapon breakdown. Provide explicit Apply and Cancel actions; cancellation must leave the Battle unchanged.
+- Each volley can be applied to exactly one target. Applying damage updates only that target's saved damage record. Keep the current attack settings and volley results visible after applying damage, but disable the Apply Damage action for that volley to prevent a second application. A separately rolled volley has its own Apply Damage action.
+- If a user wants to fire at multiple targets, they will have to resolve those as separate volleys; do not split one volley across multiple targets.
+- Show a clear success or error message.
+- Applying damage must use the same validated damage operation, armor-first behavior, limits, and persistence path as manual damage entry in Idea 4. Do not duplicate or bypass that model logic.
+
+### Damage mapping and limits
+
+- Use the damage totals already reported for the current volley by hit location, including all damage groups and damage assigned to a location after a Floating Crit reroll. The volley facing has already selected the hit-location-table column, so locations are resolved before this step. Do not roll or remap hit locations, or recalculate hit rolls, clusters, or damage.
+- Apply each location's total only to that same location, using the shared damage operation and armor/internal-structure behavior from Idea 4. For torso damage, use rear armor only for a Rear-facing volley; Front, Left, and Right-facing volleys use front armor. Left/Right facing determines the hit-location-table column and must not remap already resolved locations. Do not transfer excess damage to another location, roll critical hits, or model destruction effects.
+- Ignore and report damage beyond the selected armor and internal structure, following Idea 4. Do not modify the attacker's damage record or any other BattleMech.
+- Treat the operation as a single saved Battle update: if validation or persistence fails, report the failure and do not leave a partially applied volley.
+- This feature does not add a per-hit damage log, persist volley results, or change the rule that attack settings and results are not saved with Battles.
 
 ## 6. support for non-mech record sheets
 infantry, vehicles, aerospace, artillery, etc
@@ -318,3 +337,7 @@ add settings dialog, control default values for lots of stuff like:
 - gunnery
 - movement
 - TMM
+
+## 13. big warning for internals
+whenever damage would be transferred to an internal, show a big warning message indicating the need to roll for criticals
+list the items in that location

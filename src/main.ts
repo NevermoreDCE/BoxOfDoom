@@ -1,8 +1,16 @@
 import "./style.css";
 import { getWeaponRange, parseAvailableMechs, resolveAttack, summarizeDamageByLocation, weaponTargetNumber, type AttackResult, type Facing, type Mech, type Weapon } from "./game";
 import { RollHistory } from "./roll-history";
-import { setupBattles } from "./battle-ui";
+import { setupBattles, type DamageRosterEntry } from "./battle-ui";
 import { setupDamageTracking } from "./damage-ui";
+import {
+  applyDamageByLocation,
+  createDamageRecord,
+  validateDamageRecord,
+  type DamageLocationKey,
+  type DamageRecord,
+  type DamageSurface
+} from "./damage";
 
 const mechFiles = import.meta.glob(["../mechs/**/*.txt", "../mechs/**/*.mtf"], { eager: true, query: "?raw", import: "default" }) as Record<string, string>;
 const { mechs, errors: mechErrors } = parseAvailableMechs(mechFiles);
@@ -18,8 +26,34 @@ let saveDisabledWeapons: (keys: string[]) => boolean = () => false;
 let selectedWeapons = shortRangeWeapons(activeMech, 6, disabledWeapons);
 let results: AttackResult[] = [];
 let resultsFacing: Facing = "Front";
+let volleyDamageApplied = false;
+let appliedDamageStatus = "";
+let getDamageRoster: () => DamageRosterEntry[] = () => [];
+let getCurrentTeamId: () => string | undefined = () => undefined;
+let saveTargetDamage: (mechId: string, damage: DamageRecord) => string | undefined = () => "Battle storage is unavailable.";
 let statusMessage = "";
 let compactResults = mobileBreakpoint.matches || mobileUserAgent;
+
+const damageLocationKeysByName: Record<string, DamageLocationKey> = {
+  Head: "head",
+  "Center Torso": "center-torso",
+  "Left Torso": "left-torso",
+  "Right Torso": "right-torso",
+  "Left Arm": "left-arm",
+  "Right Arm": "right-arm",
+  "Left Leg": "left-leg",
+  "Right Leg": "right-leg"
+};
+const damageLocationNames: Record<DamageLocationKey, string> = {
+  head: "Head",
+  "center-torso": "Center Torso",
+  "left-torso": "Left Torso",
+  "right-torso": "Right Torso",
+  "left-arm": "Left Arm",
+  "right-arm": "Right Arm",
+  "left-leg": "Left Leg",
+  "right-leg": "Right Leg"
+};
 
 app.innerHTML = `
   <main class="shell">
@@ -92,9 +126,11 @@ app.innerHTML = `
           <p id="location-summary-facing" class="location-summary-facing"></p>
           <dl id="location-damage-list" class="location-damage-list"></dl>
         </section>
+        <div id="apply-damage-controls"></div>
       </section>
     </div>
     <section id="damage-screen" hidden aria-label="Damage tracking"></section>
+    <dialog id="apply-damage-dialog" class="damage-dialog" aria-labelledby="apply-damage-title"></dialog>
     <dialog id="battle-dialog" class="battle-dialog" aria-label="Choose a Battle"></dialog>
     <dialog id="roster-dialog" class="battle-dialog" aria-label="Manage Battle"></dialog>
     <footer>
@@ -303,6 +339,7 @@ getElement<HTMLButtonElement>("reset-rolls").addEventListener("click", () => {
       container.className = "results-empty";
       container.textContent = "Your attack results will appear here.";
       getElement("location-damage-list").innerHTML = "";
+      renderApplyDamage();
       return;
     }
     container.className = "result-list";
@@ -311,7 +348,188 @@ getElement<HTMLButtonElement>("reset-rolls").addEventListener("click", () => {
     getElement("location-damage-list").innerHTML = summarizeDamageByLocation(attacks, resultsFacing)
       .map(({ location, damage }) => `<div><dt>${escapeHtml(location)}</dt><dd>${damage === 0 ? '<span aria-label="No damage">-</span>' : damage}</dd></div>`)
       .join("");
+    renderApplyDamage();
   };
+
+  type DamageTargetState = { record: DamageRecord; error?: never } | { record?: never; error: string };
+  type PreparedVolleyDamage = ReturnType<typeof applyDamageByLocation>;
+
+  const damageTargetState = (entry: DamageRosterEntry): DamageTargetState => {
+    if (entry.instance.damage) {
+      try {
+        validateDamageRecord(entry.instance.damage);
+        if (entry.instance.damage.sourceMechId !== entry.instance.sourceMechId) {
+          return { error: "Saved damage belongs to a different mech design." };
+        }
+        return { record: entry.instance.damage };
+      } catch (error) {
+        return { error: error instanceof Error ? error.message : "Saved damage data is invalid." };
+      }
+    }
+    if (!entry.definition) return { error: "Bundled mech design is unavailable." };
+    if (!entry.definition.damageProfile) {
+      return { error: entry.definition.damageUnavailableReason ?? "Armor or internal-structure data is unavailable." };
+    }
+    try {
+      return { record: createDamageRecord(entry.instance.sourceMechId, entry.definition.damageProfile) };
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : "Damage values could not be initialized." };
+    }
+  };
+
+  const eligibleDamageTargets = (): DamageRosterEntry[] => {
+    const teamId = getCurrentTeamId();
+    return teamId ? getDamageRoster().filter((entry) => entry.teamId !== teamId) : [];
+  };
+
+  const prepareVolleyDamage = (entry: DamageRosterEntry): PreparedVolleyDamage => {
+    const state = damageTargetState(entry);
+    if (!state.record) throw new Error(state.error);
+    const amounts: Partial<Record<DamageLocationKey, number>> = {};
+    for (const { location, damage } of summarizeDamageByLocation(results, resultsFacing)) {
+      if (damage === 0) continue;
+      const key = damageLocationKeysByName[location];
+      if (!key) throw new Error(`Unsupported hit location: ${location}.`);
+      amounts[key] = damage;
+    }
+    const surface: DamageSurface = resultsFacing === "Rear" ? "Rear" : "Front";
+    return applyDamageByLocation(state.record, amounts, surface);
+  };
+
+  const renderApplyDamage = (): void => {
+    const controls = getElement("apply-damage-controls");
+    if (results.length === 0) {
+      controls.innerHTML = "";
+      return;
+    }
+    const totalDamage = results.reduce((sum, attack) =>
+      sum + attack.damageLocations.reduce((damage, hit) => damage + hit.damage, 0), 0);
+    const targets = eligibleDamageTargets();
+    const hasUsableTarget = targets.some((entry) => Boolean(damageTargetState(entry).record));
+    const disabled = volleyDamageApplied || totalDamage === 0 || !hasUsableTarget;
+    let message = appliedDamageStatus;
+    if (!message && volleyDamageApplied) message = "Damage from this volley has already been applied.";
+    else if (!message && totalDamage === 0) message = "This volley caused no damage to apply.";
+    else if (!message && !hasUsableTarget) {
+      message = targets.length
+        ? `No opposing mech has a usable damage record: ${targets.map((entry) => `${entry.teamName} · ${entry.instance.name}: ${damageTargetState(entry).error}`).join("; ")}.`
+        : "There are no mechs on another team to target.";
+    }
+    controls.innerHTML = `
+      <div class="apply-damage-actions">
+        <button id="open-apply-damage" class="secondary-button" type="button"${disabled ? " disabled" : ""}>Apply Damage</button>
+        <p class="apply-damage-status" role="status" aria-live="polite">${escapeHtml(message)}</p>
+      </div>`;
+  };
+
+  const applyDamageDialog = getElement<HTMLDialogElement>("apply-damage-dialog");
+
+  const renderDamagePreview = (): void => {
+    const form = applyDamageDialog.querySelector<HTMLFormElement>("form[data-form='apply-volley-damage']");
+    if (!form) return;
+    const targetSelect = form.elements.namedItem("target");
+    const preview = form.querySelector<HTMLElement>("[data-damage-preview]");
+    const error = form.querySelector<HTMLElement>("[data-preview-error]");
+    const applyButton = form.querySelector<HTMLButtonElement>("button[type='submit']");
+    if (!(targetSelect instanceof HTMLSelectElement) || !preview || !error || !applyButton) return;
+    const entry = eligibleDamageTargets().find((candidate) => candidate.instance.id === targetSelect.value);
+    if (!entry) {
+      preview.innerHTML = "";
+      error.textContent = "";
+      applyButton.disabled = true;
+      return;
+    }
+    try {
+      const prepared = prepareVolleyDamage(entry);
+      preview.innerHTML = prepared.applications.length
+        ? `<h3>Damage preview · ${escapeHtml(entry.teamName)} · ${escapeHtml(entry.instance.name)}</h3>
+          <ul>${prepared.applications.map((application) => {
+            const location = prepared.record.locations[application.location];
+            const armor = application.surface === "Rear" ? location.rearArmor : location.armor;
+            if (!armor) throw new Error(`Rear armor is unavailable at ${application.location}.`);
+            const surfaceLabel = application.surface === "Rear" ? "Rear armor" : "Armor";
+            return `<li><strong>${damageLocationNames[application.location]}</strong>: ${application.amount} damage; ${surfaceLabel} ${armor.current}/${armor.maximum}, internal ${location.internal.current}/${location.internal.maximum}${application.unapplied ? `; ${application.unapplied} overkill ignored` : ""}.</li>`;
+          }).join("")}</ul>`
+        : `<p>This volley has no location damage to apply.</p>`;
+      error.textContent = "";
+      applyButton.disabled = prepared.applications.length === 0;
+    } catch (caught) {
+      preview.innerHTML = "";
+      error.textContent = caught instanceof Error ? caught.message : "Damage preview could not be calculated.";
+      applyButton.disabled = true;
+    }
+  };
+
+  const openApplyDamageDialog = (): void => {
+    const targets = eligibleDamageTargets();
+    if (volleyDamageApplied || targets.every((entry) => !damageTargetState(entry).record)) return;
+    const options = targets.map((entry) => {
+      const state = damageTargetState(entry);
+      const label = `${entry.teamName} · ${entry.instance.name}`;
+      return `<option value="${escapeHtml(entry.instance.id)}"${state.error ? " disabled" : ""}>${escapeHtml(label)}${state.error ? ` — unavailable: ${escapeHtml(state.error)}` : ""}</option>`;
+    }).join("");
+    applyDamageDialog.innerHTML = `
+      <form class="damage-entry-form" data-form="apply-volley-damage">
+        <div class="dialog-heading"><h2 id="apply-damage-title">Apply volley damage</h2></div>
+        <label class="field"><span>Target mech</span>
+          <select name="target" required>
+            <option value="" selected disabled>Choose an opposing mech</option>
+            ${options}
+          </select>
+        </label>
+        <p class="field-hint">Only mechs on teams other than the attacker's team can be targeted.</p>
+        <div class="apply-damage-preview" data-damage-preview></div>
+        <p class="damage-dialog-error" data-preview-error role="alert"></p>
+        <p class="damage-dialog-error" data-save-error role="alert"></p>
+        <div class="dialog-actions">
+          <button class="secondary-button" type="submit" disabled>Apply damage</button>
+          <button class="secondary-button" type="button" data-action="cancel">Cancel</button>
+        </div>
+      </form>`;
+    applyDamageDialog.showModal();
+  };
+
+  getElement("apply-damage-controls").addEventListener("click", (event) => {
+    if (event.target instanceof Element && event.target.closest("#open-apply-damage")) openApplyDamageDialog();
+  });
+  applyDamageDialog.addEventListener("change", (event) => {
+    if (event.target instanceof HTMLSelectElement && event.target.name === "target") renderDamagePreview();
+  });
+  applyDamageDialog.addEventListener("click", (event) => {
+    if (event.target instanceof HTMLButtonElement && event.target.dataset.action === "cancel") applyDamageDialog.close();
+  });
+  applyDamageDialog.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const form = event.target;
+    if (!(form instanceof HTMLFormElement) || form.dataset.form !== "apply-volley-damage") return;
+    const targetSelect = form.elements.namedItem("target");
+    const saveError = form.querySelector<HTMLElement>("[data-save-error]");
+    if (!(targetSelect instanceof HTMLSelectElement) || !saveError) return;
+    const target = eligibleDamageTargets().find((entry) => entry.instance.id === targetSelect.value);
+    if (!target) {
+      saveError.textContent = "The selected target is no longer available.";
+      return;
+    }
+    try {
+      const prepared = prepareVolleyDamage(target);
+      if (prepared.applications.length === 0) {
+        saveError.textContent = "This volley has no location damage to apply.";
+        return;
+      }
+      const persistenceError = saveTargetDamage(target.instance.id, prepared.record);
+      if (persistenceError) {
+        saveError.textContent = persistenceError;
+        return;
+      }
+      volleyDamageApplied = true;
+      const overkill = prepared.applications.reduce((sum, application) => sum + application.unapplied, 0);
+      appliedDamageStatus = `Damage applied to ${target.teamName} · ${target.instance.name}.${overkill ? ` ${overkill} excess damage ignored.` : ""}`;
+      applyDamageDialog.close();
+      renderApplyDamage();
+    } catch (error) {
+      saveError.textContent = error instanceof Error ? error.message : "Damage could not be applied.";
+    }
+  });
 
   mobileBreakpoint.addEventListener("change", () => {
     compactResults = mobileBreakpoint.matches || mobileUserAgent;
@@ -324,11 +542,14 @@ getElement<HTMLButtonElement>("reset-rolls").addEventListener("click", () => {
     getElement("attack-screen").hidden = !activeMech;
   });
 
-  setupBattles(mechs, (mech, savedDisabled, saveDisabled, getDamageRoster, saveDamage) => {
+  setupBattles(mechs, (mech, savedDisabled, saveDisabled, roster, currentTeamId, saveDamage) => {
     activeMech = mech;
     disabledWeapons = new Set(savedDisabled);
     saveDisabledWeapons = saveDisabled;
-    damageTracking.updateContext(getDamageRoster, saveDamage);
+    getDamageRoster = roster;
+    getCurrentTeamId = currentTeamId;
+    saveTargetDamage = saveDamage;
+    damageTracking.updateContext(roster, saveDamage);
     getElement("attack-screen").hidden = !mech;
     getElement("attacker-name").textContent = mech?.name ?? "";
     range.value = "6";
@@ -342,6 +563,8 @@ getElement<HTMLButtonElement>("reset-rolls").addEventListener("click", () => {
     selectedWeapons = shortRangeWeapons(activeMech, 6, disabledWeapons);
     results = [];
     resultsFacing = "Front";
+    volleyDamageApplied = false;
+    appliedDamageStatus = "";
     statusMessage = "";
     renderWeapons();
     updateHeatGenerated();
@@ -407,6 +630,8 @@ getElement<HTMLButtonElement>("reset-rolls").addEventListener("click", () => {
       if (modifier === null) throw new Error(`${weapon.name} is out of range.`);
       return resolveAttack(weapon, weaponTargetNumber(targetNumber, modifier, weapon), resultsFacing, undefined, (total) => history.record(total));
     });
+    volleyDamageApplied = false;
+    appliedDamageStatus = "";
     statusMessage = "";
     renderStatus();
     renderResults(results);
